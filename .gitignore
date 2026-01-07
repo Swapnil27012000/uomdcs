@@ -1,0 +1,65 @@
+# =========================
+# Environment & Secrets
+# =========================
+.env
+.env.*
+config.php
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+error_log
+
+# =========================
+# Cache / Temp files
+# =========================
+cache/
+tmp/
+temp/
+
+# =========================
+# Uploads (if user files)
+# =========================
+uploads/
+storage/
+public/uploads/
+
+recording/
+
+
+# =========================
+# Dependency folders
+# =========================
+vendor/
+node_modules/
+
+# =========================
+# OS / Editor files
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Backup / Dump files
+# =========================
+*.sql
+*.zip
+*.tar
+*.gz
+*.bak
+
+# =========================
+# PHPUnit / Debug
+# =========================
+.phpunit.result.cache
+coverage/
+
+# =========================
+# Hosting specific
+# =========================
+.htaccess.bak
+php.ini

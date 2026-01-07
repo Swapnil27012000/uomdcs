@@ -1,0 +1,33 @@
+# Enable error reporting for debugging
+
+# php_flag display_errors on
+php_flag display_errors Off
+
+
+php_flag display_startup_errors on
+php_value error_reporting E_ALL
+php_flag log_errors on
+php_value error_log /home/u257276344/domains/canliorson.com/public_html/php_errors.log
+
+# Increase memory and execution time limits
+php_value memory_limit 256M
+php_value max_execution_time 300
+php_value max_input_time 300
+
+# Increase upload limits
+php_value upload_max_filesize 50M
+php_value post_max_size 50M
+
+
+
+# Custom error pages
+ErrorDocument 400 /400.html
+ErrorDocument 401 /401.html
+ErrorDocument 403 /403.html
+ErrorDocument 404 /404.html
+ErrorDocument 500 /500.html
+ErrorDocument 503 /503.html
+# DO NOT REMOVE THIS LINE AND THE LINES BELOW IPALLOWID:IyTpEVN8JW
+allow from 172.16.155.14
+# DO NOT REMOVE THIS LINE AND THE LINES ABOVE IyTpEVN8JW:IPALLOWID
+

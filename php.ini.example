@@ -1,0 +1,37 @@
+# PHP Configuration for UoM NIRF Portal
+# This file contains PHP settings optimized for the application
+
+# Execution and Memory Settings
+max_execution_time = 300
+memory_limit = 512M
+max_input_time = 300
+
+# File Upload Settings
+upload_max_filesize = 50M
+post_max_size = 50M
+max_file_uploads = 20
+
+# Error Reporting (Development)
+display_errors = On
+display_startup_errors = On
+log_errors = On
+error_reporting = E_ALL
+
+# Session Settings
+session.gc_maxlifetime = 7200
+session.cookie_lifetime = 0
+session.use_strict_mode = 1
+
+# Security Settings
+expose_php = Off
+allow_url_fopen = On
+allow_url_include = Off
+
+# Date and Time
+date.timezone = "Asia/Kolkata"
+
+# Character Encoding
+default_charset = "UTF-8"
+
+# Output Buffering
+output_buffering = 4096

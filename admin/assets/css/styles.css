@@ -1,0 +1,251 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary-color: #1976d2;
+    --secondary-color: #2196f3;
+    --accent-color: #f50057;
+    --background-color: #ffffff;
+    --content-bg: #ffffff;
+    --sidebar-bg: #ffffff;
+    --text-primary: #000000;
+    --text-secondary: #333333;
+    --success-color: #2e7d32;
+    --warning-color: #ed6c02;
+    --danger-color: #d32f2f;
+    --border-color: #e0e0e0;
+    --shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    --card-bg: #ffffff;
+    --stats-card-bg: #ffffff;
+    --section-bg: #f8f9fa;
+    --hover-bg: #f5f5f5;
+    --input-bg: #ffffff;
+    --header-bg: #f8f9fa;
+}
+
+body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+/* Text colors */
+.primary-text {
+    color: var(--text-primary) !important;
+}
+
+.second-text {
+    color: var(--text-secondary) !important;
+}
+
+/* Common elements */
+.rounded-full {
+    border-radius: 100%;
+}
+
+/* Layout */
+#wrapper {
+    min-height: 100vh;
+    display: flex;
+    background-color: var(--background-color);
+}
+
+/* Card and section backgrounds */
+.card {
+    background-color: var(--card-bg);
+    color: var(--text-primary);
+}
+
+.section {
+    background-color: var(--section-bg);
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+/* Form elements */
+.form-control {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.form-control:focus {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(25, 118, 210, 0.1);
+}
+
+.form-control::placeholder {
+    color: #666666;
+}
+
+.form-select {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.form-select:focus {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(25, 118, 210, 0.1);
+}
+
+/* Table styles */
+.table {
+    background-color: var(--content-bg);
+    color: var(--text-primary);
+}
+
+.table th {
+    background-color: var(--header-bg);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.table td {
+    color: var(--text-primary);
+    background-color: var(--content-bg);
+}
+
+/* List group items */
+.list-group-item {
+    background-color: var(--content-bg);
+    color: var(--text-primary);
+}
+
+.list-group-item:hover {
+    background-color: var(--hover-bg);
+}
+
+/* Navbar */
+.navbar {
+    background-color: var(--content-bg);
+    color: var(--text-primary);
+}
+
+/* Content areas */
+#page-content-wrapper {
+    background-color: var(--background-color);
+    color: var(--text-primary);
+}
+
+#sidebar-wrapper {
+  min-height: 100vh;
+}
+
+#sidebar-wrapper .sidebar-heading {
+  padding: 0.875rem 1.25rem;
+  font-size: 1.2rem;
+}
+
+#sidebar-wrapper .list-group {
+  width: 14rem;
+}
+
+#page-content-wrapper {
+  min-width: 100vw;
+  text-indent: 1.2%;
+}
+
+#wrapper.toggled #sidebar-wrapper {
+  margin-left: 0;
+}
+
+#menu-toggle {
+  cursor: pointer;
+}
+
+.list-group-item {
+  border: none;
+  padding: 20px 30px;
+  padding-left: 20%;
+}
+
+.list-group-item.active {
+  background-color: transparent;
+  color: var(--main-text-color);
+  font-weight: bold;
+  border: none;
+}
+
+@media (min-width: 768px) {
+  #sidebar-wrapper {
+    margin-left: 0;
+  }
+
+  #page-content-wrapper {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #wrapper.toggled #sidebar-wrapper {
+    margin-left: -18rem;
+  }
+}
+
+.col {
+  padding-left: 2%;
+  padding-right: 2%;
+}
+
+input,
+select {
+  width: 100%;
+  padding: 12px 20px;
+  margin: 10px 0;
+  display: inline-block;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+.submit {
+  width: 20%;
+  background-color: #3ec542;
+  color: white;
+  padding: 14px 14px;
+  margin: 8px 0;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.div {
+  border-radius: 5px;
+  background-color: #f2f2f2;
+  padding: 20px;
+  margin-left: 2%;
+  margin-right: 2%;
+}
+
+.subc {
+  text-align: center;
+}
+
+label {
+  text-align: left;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.dbutton {
+  font-size: 14px;
+  padding: 5px 18px;
+  color: rgb(255, 255, 255);
+  background-color: #eb1d1d;
+  border: 0;
+  cursor: pointer;
+  transition: all 0.2s ease-in;
+}
+
+.dbutton:link {
+  text-decoration: none;
+}
