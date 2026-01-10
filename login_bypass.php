@@ -40,8 +40,11 @@ $siteKey = $_ENV['SITE_KEY'] ?? '';
 $secretKey = $_ENV['SECRET_KEY'] ?? '';
 
 // Sanitize input
-function sanitizeInput($data)
+function sanitizeInput($data, $isPassword = false)
 {
+    if ($isPassword) {
+        return trim($data);
+    }
     return htmlspecialchars(stripslashes(trim($data)));
 }
 
@@ -84,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
     // If recaptcha OK, process login
     if (empty($recaptcha_error)) {
         $email = sanitizeInput($_POST['email'] ?? '');
-        $password = sanitizeInput($_POST['password'] ?? '');
+        $password = sanitizeInput($_POST['password'] ?? '', true);
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $login_error = "Invalid email format.";
@@ -98,22 +101,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
             $userInfo = null;
 
             // Check department_master table first
-            $stmt = $conn->prepare("SELECT * FROM department_master WHERE BINARY `EMAIL` = ? AND `PASS_WORD` = ?");
+            $stmt = $conn->prepare("SELECT * FROM department_master WHERE LOWER(`EMAIL`) = LOWER(?)");
             if ($stmt) {
-                $stmt->bind_param("ss", $email, $password);
+                $stmt->bind_param("s", $email);
                 $stmt->execute();
                 $res = $stmt->get_result();
                 if ($res && $res->num_rows > 0) {
-                    $found = true;
-                    $table = 'department_master';
                     $row = $res->fetch_assoc();
-                    $userInfo = [
-                        'email' => $row['EMAIL'],
-                        'permission' => $row['PERMISSION'] ?? 'department',
-                        'dept_id' => $row['DEPT_ID'] ?? null,
-                        'dept_name' => $row['DEPT_NAME'] ?? null,
-                        'table' => 'department_master'
-                    ];
+                    $storedPassword = trim($row['PASS_WORD'] ?? '');
+                    
+                    // Check password - support both hashed and plaintext
+                    $passwordMatch = false;
+                    if (!empty($storedPassword) && password_verify($password, $storedPassword)) {
+                        $passwordMatch = true;
+                    } elseif ($password === $storedPassword) {
+                        $passwordMatch = true;
+                    }
+                    
+                    if ($passwordMatch) {
+                        $found = true;
+                        $table = 'department_master';
+                        $userInfo = [
+                            'email' => $row['EMAIL'],
+                            'permission' => $row['PERMISSION'] ?? 'department',
+                            'dept_id' => $row['DEPT_ID'] ?? null,
+                            'dept_name' => $row['DEPT_NAME'] ?? null,
+                            'table' => 'department_master'
+                        ];
+                    }
                 }
                 $stmt->close();
             }
@@ -201,6 +216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
                             header('Location: Chairman_login/dashboard.php');
                             break;
                         case 'verification_committee':
+                        case 'verification':
                             $_SESSION['verification_committee'] = true;
                             header('Location: verification_committee/dashboard.php');
                             break;
@@ -225,6 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
                 
                 exit;
             } else {
+                error_log("Login_bypass - Failed login attempt for: $email - User not found or password mismatch.");
                 $login_error = "Invalid email or password. Please check your credentials.";
             }
         }

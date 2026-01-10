@@ -118,6 +118,7 @@ try {
                     
                 // Verification Committee permissions
                 case 'verification_committee':
+                case 'verification':
                     $_SESSION['verification_committee'] = true;
                     $redirectUrl = "verification_committee/dashboard.php";
                     break;

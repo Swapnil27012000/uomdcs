@@ -130,7 +130,7 @@ function verifyUserSession($required_permission = null) {
             'muibeas' => ['MUIBEAS'],
             'expert' => ['Expert_comty_login'],
             'chairman' => ['Chairman_login'],
-            'verification_committee' => ['verification_committee']
+            'verification' => ['verification_committee']
         ];
         
         $required_session = $permission_map[$required_permission] ?? null;
@@ -198,7 +198,7 @@ function hasPermission($permission) {
             return isset($_SESSION['Expert_comty_login']);
         case 'chairman':
             return isset($_SESSION['Chairman_login']);
-        case 'verification_committee':
+        case 'verification':
             return isset($_SESSION['verification_committee']);
         default:
             return false;
@@ -215,7 +215,7 @@ function getUserRole() {
     if (isset($_SESSION['MUIBEAS'])) return 'muibeas';
     if (isset($_SESSION['Expert_comty_login'])) return 'expert';
     if (isset($_SESSION['Chairman_login'])) return 'chairman';
-    if (isset($_SESSION['verification_committee'])) return 'verification_committee';
+    if (isset($_SESSION['verification_committee'])) return 'verification';
     return 'user';
 }
 }
@@ -238,7 +238,7 @@ function getDashboardUrl() {
             return 'Expert_comty_login/dashboard.php';
         case 'chairman':
             return 'Chairman_login/dashboard.php';
-        case 'verification_committee':
+        case 'verification':
             return 'verification_committee/dashboard.php';
         default:
             return 'user/dashboard.php';

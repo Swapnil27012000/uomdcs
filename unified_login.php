@@ -204,8 +204,11 @@ function sendOTP($email, $otp)
 }
 
 // Sanitize input
-function sanitizeInput($data)
+function sanitizeInput($data, $isPassword = false)
 {
+    if ($isPassword) {
+        return trim($data);
+    }
     return htmlspecialchars(stripslashes(trim($data)));
 }
 
@@ -248,7 +251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
     // If recaptcha OK, process login
     if (empty($recaptcha_error)) {
         $email = sanitizeInput($_POST['email'] ?? '');
-        $password = sanitizeInput($_POST['password'] ?? '');
+        $password = sanitizeInput($_POST['password'] ?? '', true);
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $login_error = "Invalid email format.";
@@ -262,22 +265,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
             $userInfo = null;
 
             // Check department_master table first
-            $stmt = $conn->prepare("SELECT * FROM department_master WHERE BINARY `EMAIL` = ? AND `PASS_WORD` = ?");
+            // Use LOWER() for case-insensitive email matching
+            $stmt = $conn->prepare("SELECT * FROM department_master WHERE LOWER(`EMAIL`) = LOWER(?)");
             if ($stmt) {
-                $stmt->bind_param("ss", $email, $password);
+                $stmt->bind_param("s", $email);
                 $stmt->execute();
                 $res = $stmt->get_result();
                 if ($res && $res->num_rows > 0) {
-                    $found = true;
-                    $table = 'department_master';
                     $row = $res->fetch_assoc();
-                    $userInfo = [
-                        'email' => $row['EMAIL'],
-                        'permission' => $row['PERMISSION'] ?? 'department',
-                        'dept_id' => $row['DEPT_ID'] ?? null,
-                        'dept_name' => $row['DEPT_NAME'] ?? null,
-                        'table' => 'department_master'
-                    ];
+                    $storedPassword = trim($row['PASS_WORD'] ?? '');
+                    $inputPassword = $password;
+                    
+                    // Check password - support both hashed and plaintext
+                    $passwordMatch = false;
+                    if (!empty($storedPassword) && password_verify($inputPassword, $storedPassword)) {
+                        $passwordMatch = true;
+                    } elseif ($inputPassword === $storedPassword) {
+                        $passwordMatch = true;
+                    }
+                    
+                    if ($passwordMatch) {
+                        $found = true;
+                        $table = 'department_master';
+                        $userInfo = [
+                            'email' => $row['EMAIL'],
+                            'permission' => $row['PERMISSION'] ?? 'department',
+                            'dept_id' => $row['DEPT_ID'] ?? null,
+                            'dept_name' => $row['DEPT_NAME'] ?? null,
+                            'table' => 'department_master'
+                        ];
+                    }
                 }
                 $stmt->close();
             }
@@ -377,6 +394,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
                     $login_error = "Failed to send OTP email. Please try again later.";
                 }
             } else {
+                error_log("Unified Login - Failed login attempt for: $email - User not found in any table or password mismatch.");
                 $login_error = "Invalid email or password. Please check your credentials.";
             }
         }

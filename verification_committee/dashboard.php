@@ -6,6 +6,7 @@ session_start();
 require('../config.php');
 
 // Only allow if session set
+// if (!isset($_SESSION['verification_committee']) || !isset($_SESSION['admin_username'])) {
 if (!isset($_SESSION['verification_committee']) || !isset($_SESSION['admin_username'])) {
     echo '<script>top.location = "../index.php";</script>';
     exit;

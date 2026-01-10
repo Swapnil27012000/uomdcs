@@ -1,9 +1,9 @@
 <?php
-// verification_committee/session.php - Verification Committee session verification
-require('../session_verification.php');
+// verification/session.php - Verification Committee session verification
+require_once(__DIR__ . '/../session_verification.php');
 
 // Verify user has Verification Committee access
-$userData = verifyUserSession('verification_committee');
+$userData = verifyUserSession('verification');
 
 if (!$userData) {
     exit; // verifyUserSession handles redirect
@@ -16,19 +16,21 @@ $table = $userData['table'];
 $email = $userData['email'];
 
 // Additional Verification Committee specific checks
-if (!hasPermission('verification_committee')) {
+if (!hasPermission('verification')) {
     redirectToLogin("Access denied. Verification Committee permission required.");
 }
 
 // Set Verification Committee specific session variables
-$_SESSION['current_role'] = 'verification_committee';
+$_SESSION['current_role'] = 'verification';
 $_SESSION['user_table'] = $table;
 $_SESSION['user_permission'] = $permission;
 // CRITICAL FIX: Set admin_username for dashboard compatibility
-$_SESSION['admin_username'] = $email;
-// Ensure verification_committee session is set
-$_SESSION['verification_committee'] = true;
+// $_SESSION['admin_username'] = $email;
+// // Ensure verification session is set
+// $_SESSION['verification'] = true;
 
 // Log access for security
+error_log("Verification Committee access: " . $email . " from " . $table . " table");
+
 // Error logging disabled
 ?>
