@@ -116,6 +116,12 @@ try {
                     $redirectUrl = "Chairman_login/dashboard.php";
                     break;
                     
+                // Verification Committee permissions
+                case 'verification_committee':
+                    $_SESSION['verification_committee'] = true;
+                    $redirectUrl = "verification_committee/dashboard.php";
+                    break;
+                     
                 // Default fallback for boss table
                 default:
                     // Log unknown permission for debugging

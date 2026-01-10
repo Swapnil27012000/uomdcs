@@ -25,6 +25,9 @@ if (isset($_SESSION['admin'])) {
 } elseif (isset($_SESSION['Chairman_login'])) {
     header('Location: Chairman_login/dashboard.php');
     exit;
+} elseif (isset($_SESSION['verification_committee'])) {
+    header('Location: verification_committee/dashboard.php');
+    exit;
 }
 
 require __DIR__ . '/vendor/autoload.php';
@@ -197,6 +200,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
                             $_SESSION['Chairman_login'] = true;
                             header('Location: Chairman_login/dashboard.php');
                             break;
+                        case 'verification_committee':
+                            $_SESSION['verification_committee'] = true;
+                            header('Location: verification_committee/dashboard.php');
+                            break;
                         default:
                             // Log unknown permission for debugging
                             error_log("Unknown permission in login_bypass.php: " . $permission . " (lower: " . $permission_lower . ") for user: " . $email);
@@ -302,6 +309,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
             background: #ff9ff3;
             color: white;
         }
+
+        .badge-verification {
+            background: #ffa502;
+            color: white;
+        }
     </style>
 </head>
 
@@ -344,6 +356,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
                     <div class="flex items-center justify-between">
                         <span>Chairman</span>
                         <span class="user-type-badge badge-chairman">Chairman</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span>Verification Committee</span>
+                        <span class="user-type-badge badge-verification">Verification</span>
                     </div>
                 </div>
                 <div class="mt-4 p-3 bg-blue-50 rounded-lg">

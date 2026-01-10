@@ -55,6 +55,9 @@ if (isset($_SESSION['admin'])) {
 } elseif (isset($_SESSION['Chairman_login'])) {
     echo '<script>top.location = "Chairman_login/dashboard.php";</script>';
     exit;
+} elseif (isset($_SESSION['verification_committee'])) {
+    echo '<script>top.location = "verification_committee/dashboard.php";</script>';
+    exit;
 }
 
 // CRITICAL: Load vendor/autoload.php with error handling
@@ -124,73 +127,73 @@ function sendOTP($email, $otp)
         // HTML email body
         $mail->Body =
             "<!doctype html>
-<html lang='en'>
-<head>
-<meta charset='utf-8'>
-<meta name='viewport' content='width=device-width, initial-scale=1.0'>
-<title>UOMDCS OTP Email</title>
-<style>
-body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; background-color: #eef2f6; margin: 0; padding: 0; }
-.wrapper { max-width: 650px; margin: 40px auto; background: #ffffff; border-radius: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); overflow: hidden; }
-.header { background: linear-gradient(90deg, #004aad, #0077ff); color: #fff; text-align: center; padding: 24px; }
-.header h1 { font-size: 20px; margin: 0; letter-spacing: 0.5px; }
-.content { padding: 30px; color: #222; line-height: 1.6; }
-.otp-container { text-align: center; margin: 30px 0; }
-.otp { display: inline-block; background: #f1f5ff; border: 2px solid #004aad; color: #004aad; padding: 16px 32px; border-radius: 10px; font-size: 28px; letter-spacing: 6px; font-weight: 700; }
-.info-box { background: #f9fafc; padding: 16px 20px; border-left: 4px solid #0077ff; margin: 20px 0; border-radius: 8px; }
-a { color: #0077ff; text-decoration: none; }
-.footer { background: #f5f7fa; text-align: center; padding: 18px; font-size: 13px; color: #555; }
-.footer strong { color: #222; }
-</style>
-</head>
-<body>
-<div class='wrapper'>
-<div class='header'>
-<h1>University of Mumbai - Department of Information Technology</h1>
-</div>
+            <html lang='en'>
+            <head>
+            <meta charset='utf-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <title>UOMDCS OTP Email</title>
+            <style>
+            body { font-family: 'Segoe UI', Roboto, Arial, sans-serif; background-color: #eef2f6; margin: 0; padding: 0; }
+            .wrapper { max-width: 650px; margin: 40px auto; background: #ffffff; border-radius: 16px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); overflow: hidden; }
+            .header { background: linear-gradient(90deg, #004aad, #0077ff); color: #fff; text-align: center; padding: 24px; }
+            .header h1 { font-size: 20px; margin: 0; letter-spacing: 0.5px; }
+            .content { padding: 30px; color: #222; line-height: 1.6; }
+            .otp-container { text-align: center; margin: 30px 0; }
+            .otp { display: inline-block; background: #f1f5ff; border: 2px solid #004aad; color: #004aad; padding: 16px 32px; border-radius: 10px; font-size: 28px; letter-spacing: 6px; font-weight: 700; }
+            .info-box { background: #f9fafc; padding: 16px 20px; border-left: 4px solid #0077ff; margin: 20px 0; border-radius: 8px; }
+            a { color: #0077ff; text-decoration: none; }
+            .footer { background: #f5f7fa; text-align: center; padding: 18px; font-size: 13px; color: #555; }
+            .footer strong { color: #222; }
+            </style>
+            </head>
+            <body>
+            <div class='wrapper'>
+            <div class='header'>
+            <h1>University of Mumbai - Department of Information Technology</h1>
+            </div>
 
 
-<div class='content'>
-<p>Dear <strong>User</strong>,</p>
-<p>Your One Time Password (OTP) for login verification on <strong>UOMDCS Portal</strong> is:</p>
+            <div class='content'>
+            <p>Dear <strong>User</strong>,</p>
+            <p>Your One Time Password (OTP) for login verification on <strong>UOMDCS Portal</strong> is:</p>
 
 
-<div class='otp-container'>
-<div class='otp'>$otp</div>
-</div>
+            <div class='otp-container'>
+            <div class='otp'>$otp</div>
+            </div>
 
 
-<p>This OTP is valid for <strong>5 minutes</strong> and can be used only for the current login attempt. Please <strong>do not share</strong> this OTP with anyone.</p>
+            <p>This OTP is valid for <strong>5 minutes</strong> and can be used only for the current login attempt. Please <strong>do not share</strong> this OTP with anyone.</p>
 
 
-<div class='info-box'>
-<p>If you did not request this OTP, please ignore this email or contact our support team immediately.</p>
-</div>
+            <div class='info-box'>
+            <p>If you did not request this OTP, please ignore this email or contact our support team immediately.</p>
+            </div>
 
 
-<p>For any queries or support, you can contact us at:</p>
-<ul>
-<li><strong>Email:</strong> <a href='mailto:techsupport.nirf@mu.ac.in'>techsupport.nirf@mu.ac.in</a></li>
-<li><strong>Website:</strong> <a href='https://uomdcs.univofmumbai.in'>uomdcs.univofmumbai.in</a></li>
-</ul>
+            <p>For any queries or support, you can contact us at:</p>
+            <ul>
+            <li><strong>Email:</strong> <a href='mailto:techsupport.nirf@mu.ac.in'>techsupport.nirf@mu.ac.in</a></li>
+            <li><strong>Website:</strong> <a href='https://uomdcs.univofmumbai.in'>uomdcs.univofmumbai.in</a></li>
+            </ul>
 
 
-<p>Thank you for your trust in our services.<br>
-<strong>- UOMDCS Support Team</strong></p>
-</div>
+            <p>Thank you for your trust in our services.<br>
+            <strong>- UOMDCS Support Team</strong></p>
+            </div>
 
 
-<div class='footer'>
-******************************* Information *******************************<br>
-Do not share your OTP, password, or personal details with anyone. UOMDCS will never ask for such information.<br><br>
-<strong>Warm Regards,</strong><br>
-Technical Support Team<br>
-Department of Information Technology<br>
-University of Mumbai (UOMDCS)
-</div>
-</div>
-</body>
-</html>";
+            <div class='footer'>
+            ******************************* Information *******************************<br>
+            Do not share your OTP, password, or personal details with anyone. UOMDCS will never ask for such information.<br><br>
+            <strong>Warm Regards,</strong><br>
+            Technical Support Team<br>
+            Department of Information Technology<br>
+            University of Mumbai (UOMDCS)
+            </div>
+            </div>
+            </body>
+            </html>";
         // **************
         $mail->send();
         return true;
@@ -442,6 +445,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
             background: #ff9ff3;
             color: white;
         }
+
+        .badge-verification {
+            background: #ffa502;
+            color: white;
+        }
     </style>
 </head>
 
@@ -485,12 +493,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['loginBtn'])) {
                         <span>Chairman</span>
                         <span class="user-type-badge badge-chairman">Chairman</span>
                     </div>
-                </div>
-                <div class="mt-4 p-3 bg-blue-50 rounded-lg">
-                    <p class="text-sm text-blue-800">
-                        <strong>Note:</strong> All user types use the same login form.
-                        Your dashboard will be determined automatically based on your assigned permissions.
-                    </p>
+                    <div class="flex items-center justify-between">
+                        <span>Verification Committee</span>
+                        <span class="user-type-badge badge-verification">Verification</span>
+                    </div>
                 </div>
             </div>
 

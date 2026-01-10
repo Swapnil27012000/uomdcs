@@ -1,11 +1,12 @@
+
 <?php
-// MUIBEAS/dashboard.php
+// verification_committee/dashboard.php
 header("X-XSS-Protection: 0");
 session_start();
 require('../config.php');
 
 // Only allow if session set
-if (!isset($_SESSION['MUIBEAS']) || !isset($_SESSION['admin_username'])) {
+if (!isset($_SESSION['verification_committee']) || !isset($_SESSION['admin_username'])) {
     echo '<script>top.location = "../index.php";</script>';
     exit;
 }
@@ -39,11 +40,11 @@ $email = $info['EMAIL'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Expert Committee Dashboard</title>
+    <title>verification committee Dashboard</title>
 </head>
 <body>
-    Hello, MUIBEAS <?php echo htmlspecialchars($email); ?> <br>
-    <p>MUIBEAS Dashboard</p>
+    Hello, verification_committee <?php echo htmlspecialchars($email); ?> <br>
+    <p>verification_committee Dashboard</p>
     <a href="../logout.php">Logout</a>
 </body>
 </html>
