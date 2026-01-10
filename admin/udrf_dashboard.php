@@ -347,12 +347,12 @@ $overall_ranking = getAllDepartmentsOverallRanking($academic_year);
             <div class="card-body">
                 <div class="categories-grid">
             <?php foreach ($categories as $category): ?>
-                <div class="category-card" onclick="window.location.href='udrf_category.php?cat_id=<?php echo $category['id']; ?>&name=<?php echo urlencode($category['name']); ?>'">
-                    <div class="category-number"><?php echo $category['id']; ?></div>
-                    <div class="category-name" style="color: #1e3a8a; font-weight: 600;"><?php echo htmlspecialchars($category['name']); ?></div>
+                <div class="category-card" onclick="window.location.href='udrf_category.php?cat_id=<?php echo (int)$category['id']; ?>&name=<?php echo urlencode($category['name']); ?>'">
+                    <div class="category-number"><?php echo (int)$category['id']; ?></div>
+                    <div class="category-name" style="color: #1e3a8a; font-weight: 600;"><?php echo htmlspecialchars($category['name'], ENT_QUOTES, 'UTF-8'); ?></div>
                     <div class="category-stats">
                         <i class="fas fa-building"></i>
-                        <span><span class="category-count"><?php echo $category['count']; ?></span> Departments</span>
+                        <span><span class="category-count"><?php echo (int)$category['count']; ?></span> Departments</span>
                     </div>
                     <button class="btn-view" type="button">
                         <i class="fas fa-arrow-right"></i> View Departments

@@ -4,7 +4,21 @@
  * Copied from Chairman_login/functions.php
  */
 
-require_once(__DIR__ . '/../config.php');
+// CRITICAL: Check connection before use (Security Guide Section 12)
+if (!isset($GLOBALS['db_connection']) || !$GLOBALS['db_connection']) {
+    require_once(__DIR__ . '/../config.php');
+}
+
+// CRITICAL: Verify connection is alive
+if (isset($conn) && $conn && !@mysqli_ping($conn)) {
+    // Connection is dead - reconnect
+    if (isset($GLOBALS['db_connection']) && $GLOBALS['db_connection']) {
+        @mysqli_close($GLOBALS['db_connection']);
+        unset($GLOBALS['db_connection']);
+    }
+    require_once(__DIR__ . '/../config.php');
+}
+
 require_once(__DIR__ . '/../Expert_comty_login/expert_functions.php');
 
 /**
@@ -12,6 +26,13 @@ require_once(__DIR__ . '/../Expert_comty_login/expert_functions.php');
  */
 function getAllCategoriesWithCounts($academic_year = null) {
     global $conn;
+    
+    // CRITICAL: Check connection before use (Security Guide Section 12)
+    if (!isset($conn) || !$conn || !@mysqli_ping($conn)) {
+        error_log("Database connection unavailable in getAllCategoriesWithCounts");
+        return [];
+    }
+    
     if (!$academic_year) {
         $academic_year = getAcademicYear();
     }
@@ -64,12 +85,68 @@ function recalculateDepartmentTotalScore($dept_id, $academic_year) {
     require_once(__DIR__ . '/../Expert_comty_login/data_fetcher.php');
     require_once(__DIR__ . '/../Expert_comty_login/expert_functions.php');
     
-    // CRITICAL: Use centralized calculation function for consistency
-    // This ensures all sections are calculated using the same logic across all views
+    // CRITICAL: Use the same calculation method as Consolidated_Score.php
+    // Include section files to get accurate calculated values (same as department_review.php)
     $dept_data = fetchAllDepartmentData($dept_id, $academic_year);
-    $auto_scores = recalculateAllSectionsFromData($dept_id, $academic_year, $dept_data, true);
     
-    // Note: All section scores and total are already calculated by recalculateAllSectionsFromData()
+    // Set variables needed by section files
+    $email = '';
+    $is_locked = false;
+    $is_readonly = true;
+    $is_department_view = false;
+    $is_chairman_view = false;
+    $expert_scores = [
+        'section_1' => 0,
+        'section_2' => 0,
+        'section_3' => 0,
+        'section_4' => 0,
+        'section_5' => 0,
+        'total' => 0
+    ];
+    $auto_scores = [
+        'section_1' => 0,
+        'section_2' => 0,
+        'section_3' => 0,
+        'section_4' => 0,
+        'section_5' => 0,
+        'total' => 0
+    ];
+    
+    // Use output buffering to capture and discard HTML output from section files
+    ob_start();
+    
+    // Include section files from Expert_comty_login directory
+    include(__DIR__ . '/../Expert_comty_login/section1_faculty_output.php');
+    if (isset($section_1_auto_total_calculated)) {
+        $auto_scores['section_1'] = $section_1_auto_total_calculated;
+    }
+    
+    include(__DIR__ . '/../Expert_comty_login/section2_nep_initiatives.php');
+    // Section II doesn't set $section_2_auto_total, so calculate it using the function
+    $sec2 = $dept_data['section_2'] ?? [];
+    $auto_scores['section_2'] = calculateSection2FromArray($sec2);
+    
+    include(__DIR__ . '/../Expert_comty_login/section3_governance.php');
+    if (isset($section_3_auto_total)) {
+        $auto_scores['section_3'] = $section_3_auto_total;
+    }
+    
+    include(__DIR__ . '/../Expert_comty_login/section4_student_support.php');
+    if (isset($section_4_auto_total)) {
+        $auto_scores['section_4'] = $section_4_auto_total;
+    }
+    
+    include(__DIR__ . '/../Expert_comty_login/section5_conferences.php');
+    if (isset($section_5_auto_total)) {
+        $auto_scores['section_5'] = $section_5_auto_total;
+    }
+    
+    // Discard all HTML output from section files
+    ob_end_clean();
+    
+    // CRITICAL: Recalculate total after all sections are included
+    $auto_scores['total'] = (float)$auto_scores['section_1'] + (float)$auto_scores['section_2'] + (float)$auto_scores['section_3'] + (float)$auto_scores['section_4'] + (float)$auto_scores['section_5'];
+    
     error_log("[Admin UDRF recalculateDepartmentTotalScore] FINAL SCORES - S1: " . $auto_scores['section_1'] . ", S2: " . $auto_scores['section_2'] . ", S3: " . $auto_scores['section_3'] . ", S4: " . $auto_scores['section_4'] . ", S5: " . $auto_scores['section_5'] . ", TOTAL: " . $auto_scores['total']);
     
     return $auto_scores['total'];
@@ -101,6 +178,20 @@ function getDepartmentScoreForRanking($dept_id, $category, $academic_year) {
  */
 function getDepartmentsWithScores($category, $academic_year = null) {
     global $conn;
+    
+    // CRITICAL: Check connection before use (Security Guide Section 12)
+    if (!isset($conn) || !$conn || !@mysqli_ping($conn)) {
+        error_log("Database connection unavailable in getDepartmentsWithScores");
+        return [];
+    }
+    
+    // CRITICAL: Validate input (Security Guide Section 5)
+    $category = trim($category ?? '');
+    if (empty($category)) {
+        error_log("Empty category in getDepartmentsWithScores");
+        return [];
+    }
+    
     if (!$academic_year) {
         $academic_year = getAcademicYear();
     }
@@ -196,29 +287,47 @@ function getDepartmentsWithScores($category, $academic_year = null) {
 }
 
 /**
- * Get expert email for a category
+ * Get all expert emails for a category (returns array of expert emails)
  */
-function getExpertForCategory($category) {
+function getAllExpertsForCategory($category) {
     global $conn;
-    $stmt = $conn->prepare("SELECT expert_email FROM expert_categories WHERE category = ? LIMIT 1");
+    
+    // CRITICAL: Check connection before use (Security Guide Section 12)
+    if (!isset($conn) || !$conn || !@mysqli_ping($conn)) {
+        error_log("Database connection unavailable in getAllExpertsForCategory");
+        return [];
+    }
+    
+    // CRITICAL: Validate input (Security Guide Section 5)
+    $category = trim($category ?? '');
+    if (empty($category)) {
+        error_log("Empty category in getAllExpertsForCategory");
+        return [];
+    }
+    
+    $experts = [];
+    $stmt = $conn->prepare("SELECT expert_email FROM expert_categories WHERE category = ? ORDER BY expert_email ASC");
     if ($stmt) {
         $stmt->bind_param("s", $category);
         $stmt->execute();
         $result = $stmt->get_result();
-        if ($row = $result->fetch_assoc()) {
-            $expert_email = $row['expert_email'];
-            if ($result) {
-                mysqli_free_result($result);
-            }
-            $stmt->close();
-            return $expert_email;
+        while ($row = $result->fetch_assoc()) {
+            $experts[] = $row['expert_email'];
         }
         if ($result) {
             mysqli_free_result($result);
         }
         $stmt->close();
     }
-    return null;
+    return $experts;
+}
+
+/**
+ * Get expert email for a category (returns first expert for backward compatibility)
+ */
+function getExpertForCategory($category) {
+    $experts = getAllExpertsForCategory($category);
+    return !empty($experts) ? $experts[0] : null;
 }
 
 /**
@@ -227,6 +336,13 @@ function getExpertForCategory($category) {
  */
 function getAllDepartmentsOverallRanking($academic_year = null) {
     global $conn;
+    
+    // CRITICAL: Check connection before use (Security Guide Section 12)
+    if (!isset($conn) || !$conn || !@mysqli_ping($conn)) {
+        error_log("Database connection unavailable in getAllDepartmentsOverallRanking");
+        return [];
+    }
+    
     if (!$academic_year) {
         $academic_year = getAcademicYear();
     }

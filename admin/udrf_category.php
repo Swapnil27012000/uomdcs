@@ -14,10 +14,13 @@ if (file_exists(__DIR__ . '/../common_functions.php')) {
     require_once(__DIR__ . '/../common_progress_functions.php');
 }
 
+// CRITICAL: Validate and sanitize input (Security Guide Section 5)
 $cat_id = isset($_GET['cat_id']) ? (int)$_GET['cat_id'] : 0;
-$category_name = isset($_GET['name']) ? urldecode($_GET['name']) : '';
+$category_name_raw = isset($_GET['name']) ? trim($_GET['name']) : '';
+$category_name = !empty($category_name_raw) ? htmlspecialchars(urldecode($category_name_raw), ENT_QUOTES, 'UTF-8') : '';
 
 if (!$cat_id || !$category_name) {
+    error_log("Invalid category parameters in udrf_category.php: cat_id=$cat_id, name=" . ($category_name_raw ?? 'empty'));
     header('Location: udrf_dashboard.php');
     exit;
 }
@@ -315,7 +318,7 @@ $departments = getDepartmentsWithScores($category_name, $academic_year);
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <a href="udrf_department.php?dept_id=<?php echo $dept_id; ?>&cat_id=<?php echo (int)$cat_id; ?>&name=<?php echo urlencode($category_name); ?>" 
+                                    <a href="udrf_department.php?dept_id=<?php echo (int)$dept_id; ?>&cat_id=<?php echo (int)$cat_id; ?>&name=<?php echo urlencode($category_name); ?>" 
                                        class="btn-view">
                                         <i class="fas fa-eye"></i> View
                                     </a>

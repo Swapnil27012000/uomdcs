@@ -9,9 +9,10 @@ if (!date_default_timezone_get() || date_default_timezone_get() !== 'Asia/Kolkat
     date_default_timezone_set('Asia/Kolkata');
 }
 
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
+// CRITICAL: Disable error display in production (Security Guide Section 15)
+error_reporting(0);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
 
 // Start output buffering
 if (ob_get_level() === 0) {
@@ -25,19 +26,27 @@ try {
     // expert_functions.php is already included via udrf_functions.php
 } catch (Exception $e) {
     ob_end_clean();
-    die("Error loading page: " . $e->getMessage() . "<br>File: " . $e->getFile() . "<br>Line: " . $e->getLine());
+    error_log("Error loading udrf_department.php: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
+    header('Location: udrf_dashboard.php');
+    exit;
 } catch (Error $e) {
     ob_end_clean();
-    die("Fatal error: " . $e->getMessage() . "<br>File: " . $e->getFile() . "<br>Line: " . $e->getLine());
+    error_log("Fatal error in udrf_department.php: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
+    header('Location: udrf_dashboard.php');
+    exit;
 }
 
+// CRITICAL: Validate and sanitize input (Security Guide Section 5)
 $dept_id_raw = isset($_GET['dept_id']) ? (int)$_GET['dept_id'] : 0;
 $dept_id = resolveDepartmentId($dept_id_raw);
 $cat_id = isset($_GET['cat_id']) ? (int)$_GET['cat_id'] : 0;
-$category_name = isset($_GET['name']) ? urldecode($_GET['name']) : '';
+$category_name_raw = isset($_GET['name']) ? trim($_GET['name']) : '';
+$category_name = !empty($category_name_raw) ? htmlspecialchars(urldecode($category_name_raw), ENT_QUOTES, 'UTF-8') : '';
 
 if (!$dept_id) {
-    die("Valid Department ID is required");
+    error_log("Invalid department ID in udrf_department.php");
+    header('Location: udrf_dashboard.php');
+    exit;
 }
 
 // Load common functions for getAcademicYear()
@@ -48,6 +57,13 @@ if (file_exists(__DIR__ . '/../common_functions.php')) {
 }
 
 $academic_year = getAcademicYear();
+
+// CRITICAL: Check connection before use (Security Guide Section 12)
+if (!isset($conn) || !$conn || !@mysqli_ping($conn)) {
+    error_log("Database connection unavailable in udrf_department.php");
+    header('Location: udrf_dashboard.php');
+    exit;
+}
 
 // Fetch department info
 $dept_query = "SELECT 
@@ -83,10 +99,67 @@ $dept_data = fetchAllDepartmentData($dept_id, $academic_year);
 $documents = fetchAllSupportingDocuments($dept_id, $academic_year);
 $grouped_docs = groupDocumentsBySection($documents);
 
-// CRITICAL: Use centralized calculation function for consistency
-// This ensures all sections are calculated using the same logic as review_complete.php
+// CRITICAL: Use the same calculation method as Consolidated_Score.php
+// Include section files to get accurate calculated values (same as department_review.php)
 require_once(__DIR__ . '/../Expert_comty_login/expert_functions.php');
-$auto_scores = recalculateAllSectionsFromData($dept_id, $academic_year, $dept_data, true);
+
+// Set variables needed by section files
+$email = $userInfo['EMAIL'] ?? '';
+$is_locked = false;
+$is_readonly = true;
+$is_department_view = false;
+$is_chairman_view = false;
+$expert_scores = [
+    'section_1' => 0,
+    'section_2' => 0,
+    'section_3' => 0,
+    'section_4' => 0,
+    'section_5' => 0,
+    'total' => 0
+];
+$auto_scores = [
+    'section_1' => 0,
+    'section_2' => 0,
+    'section_3' => 0,
+    'section_4' => 0,
+    'section_5' => 0,
+    'total' => 0
+];
+
+// Use output buffering to capture and discard HTML output from section files
+ob_start();
+
+// Include section files from Expert_comty_login directory
+include(__DIR__ . '/../Expert_comty_login/section1_faculty_output.php');
+if (isset($section_1_auto_total_calculated)) {
+    $auto_scores['section_1'] = $section_1_auto_total_calculated;
+}
+
+include(__DIR__ . '/../Expert_comty_login/section2_nep_initiatives.php');
+// Section II doesn't set $section_2_auto_total, so calculate it using the function
+$sec2 = $dept_data['section_2'] ?? [];
+$auto_scores['section_2'] = calculateSection2FromArray($sec2);
+
+include(__DIR__ . '/../Expert_comty_login/section3_governance.php');
+if (isset($section_3_auto_total)) {
+    $auto_scores['section_3'] = $section_3_auto_total;
+}
+
+include(__DIR__ . '/../Expert_comty_login/section4_student_support.php');
+if (isset($section_4_auto_total)) {
+    $auto_scores['section_4'] = $section_4_auto_total;
+}
+
+include(__DIR__ . '/../Expert_comty_login/section5_conferences.php');
+if (isset($section_5_auto_total)) {
+    $auto_scores['section_5'] = $section_5_auto_total;
+}
+
+// Discard all HTML output from section files
+ob_end_clean();
+
+// CRITICAL: Recalculate total after all sections are included
+$auto_scores['total'] = (float)$auto_scores['section_1'] + (float)$auto_scores['section_2'] + (float)$auto_scores['section_3'] + (float)$auto_scores['section_4'] + (float)$auto_scores['section_5'];
 
 error_log("[Admin UDRF Department] FINAL SCORES BREAKDOWN for dept_id=$dept_id:");
 error_log("  Section I (Faculty Output): " . $auto_scores['section_1']);
@@ -96,40 +169,59 @@ error_log("  Section IV (Student Support): " . $auto_scores['section_4']);
 error_log("  Section V (Conferences & Collaborations): " . $auto_scores['section_5']);
 error_log("  TOTAL: " . $auto_scores['total'] . " / 725");
 
-// Recalculate total from ALL sections - CRITICAL: Ensure all sections are summed correctly with explicit float casting
-$auto_scores['total'] = (float)$auto_scores['section_1'] + (float)$auto_scores['section_2'] + (float)$auto_scores['section_3'] + (float)$auto_scores['section_4'] + (float)$auto_scores['section_5'];
+// Get all experts for this category (now supports 2 experts per category)
+$expert_emails = getAllExpertsForCategory($category_name);
+$expert_reviews = [];
+$expert_1_review = null;
+$expert_2_review = null;
 
-// Mark narrative scores as already included to prevent double-adding when section1_faculty_output.php is included
-$GLOBALS['narrative_scores_included'] = true;
-
-// Include section4_student_support.php early to get accurate $section_4_auto_total calculation
-// Use output buffering to capture calculation without rendering HTML
-ob_start();
-try {
-    // Set a flag to prevent HTML rendering (we only need the calculation)
-    $calculate_only = true;
-    include('../Expert_comty_login/section4_student_support.php');
-    // Update auto_scores['section_4'] with the accurate value if available
-    if (isset($section_4_auto_total)) {
-        $auto_scores['section_4'] = $section_4_auto_total;
-        // Recalculate total with corrected Section IV value - CRITICAL: Use explicit float casting
-        $auto_scores['total'] = (float)$auto_scores['section_1'] + (float)$auto_scores['section_2'] + (float)$auto_scores['section_3'] + (float)$auto_scores['section_4'] + (float)$auto_scores['section_5'];
+// Fetch reviews from all experts
+foreach ($expert_emails as $idx => $expert_email) {
+    $review = getExpertReview($expert_email, $dept_id, $academic_year);
+    if ($review) {
+        $expert_reviews[] = $review;
+        if ($idx === 0) {
+            $expert_1_review = $review;
+        } elseif ($idx === 1) {
+            $expert_2_review = $review;
+        }
     }
-} catch (Exception $e) {
-    // Ignore errors during calculation phase
-    error_log("Error calculating section 4 total: " . $e->getMessage());
-}
-ob_end_clean();
-unset($calculate_only); // Clear the flag
-
-// Get expert review if exists
-$expert_email = getExpertForCategory($category_name);
-$expert_review = null;
-if ($expert_email) {
-    $expert_review = getExpertReview($expert_email, $dept_id, $academic_year);
 }
 
-// Parse individual item scores from JSON (if stored)
+// Use first expert's review for backward compatibility (for item scores, narrative scores)
+$expert_review = $expert_1_review ?? ($expert_2_review ?? null);
+
+// Parse Expert 1 and Expert 2 item scores separately for section displays
+$expert_1_item_scores = [];
+$expert_2_item_scores = [];
+$expert_1_narrative_scores = [];
+$expert_2_narrative_scores = [];
+if ($expert_1_review && !empty($expert_1_review['expert_item_scores'])) {
+    $item_scores_json_1 = is_string($expert_1_review['expert_item_scores']) 
+        ? $expert_1_review['expert_item_scores'] 
+        : json_encode($expert_1_review['expert_item_scores']);
+    $expert_1_item_scores = json_decode($item_scores_json_1, true) ?? [];
+}
+if ($expert_2_review && !empty($expert_2_review['expert_item_scores'])) {
+    $item_scores_json_2 = is_string($expert_2_review['expert_item_scores']) 
+        ? $expert_2_review['expert_item_scores'] 
+        : json_encode($expert_2_review['expert_item_scores']);
+    $expert_2_item_scores = json_decode($item_scores_json_2, true) ?? [];
+}
+if ($expert_1_review && !empty($expert_1_review['expert_narrative_scores'])) {
+    $narrative_scores_json_1 = is_string($expert_1_review['expert_narrative_scores']) 
+        ? $expert_1_review['expert_narrative_scores'] 
+        : json_encode($expert_1_review['expert_narrative_scores']);
+    $expert_1_narrative_scores = json_decode($narrative_scores_json_1, true) ?? [];
+}
+if ($expert_2_review && !empty($expert_2_review['expert_narrative_scores'])) {
+    $narrative_scores_json_2 = is_string($expert_2_review['expert_narrative_scores']) 
+        ? $expert_2_review['expert_narrative_scores'] 
+        : json_encode($expert_2_review['expert_narrative_scores']);
+    $expert_2_narrative_scores = json_decode($narrative_scores_json_2, true) ?? [];
+}
+
+// Parse individual item scores from JSON (if stored) - use first expert's data
 $expert_item_scores = [];
 $expert_narrative_scores = [];
 if ($expert_review) {
@@ -147,19 +239,59 @@ if ($expert_review) {
     }
 }
 
-// Initialize expert scores array (same as review_complete.php)
-$expert_scores = [
-    'section_1' => ($expert_review && $expert_review['expert_score_section_1'] !== null) ? (float)$expert_review['expert_score_section_1'] : 0,
-    'section_2' => ($expert_review && $expert_review['expert_score_section_2'] !== null) ? (float)$expert_review['expert_score_section_2'] : 0,
-    'section_3' => ($expert_review && $expert_review['expert_score_section_3'] !== null) ? (float)$expert_review['expert_score_section_3'] : 0,
-    'section_4' => ($expert_review && $expert_review['expert_score_section_4'] !== null) ? (float)$expert_review['expert_score_section_4'] : 0,
-    'section_5' => ($expert_review && $expert_review['expert_score_section_5'] !== null) ? (float)$expert_review['expert_score_section_5'] : 0,
+// Calculate Expert 1 scores
+$expert_1_scores = [
+    'section_1' => $expert_1_review ? (float)($expert_1_review['expert_score_section_1'] ?? 0) : 0,
+    'section_2' => $expert_1_review ? (float)($expert_1_review['expert_score_section_2'] ?? 0) : 0,
+    'section_3' => $expert_1_review ? (float)($expert_1_review['expert_score_section_3'] ?? 0) : 0,
+    'section_4' => $expert_1_review ? (float)($expert_1_review['expert_score_section_4'] ?? 0) : 0,
+    'section_5' => $expert_1_review ? (float)($expert_1_review['expert_score_section_5'] ?? 0) : 0,
 ];
+$expert_1_scores['total'] = array_sum($expert_1_scores);
+
+// Calculate Expert 2 scores
+$expert_2_scores = [
+    'section_1' => $expert_2_review ? (float)($expert_2_review['expert_score_section_1'] ?? 0) : 0,
+    'section_2' => $expert_2_review ? (float)($expert_2_review['expert_score_section_2'] ?? 0) : 0,
+    'section_3' => $expert_2_review ? (float)($expert_2_review['expert_score_section_3'] ?? 0) : 0,
+    'section_4' => $expert_2_review ? (float)($expert_2_review['expert_score_section_4'] ?? 0) : 0,
+    'section_5' => $expert_2_review ? (float)($expert_2_review['expert_score_section_5'] ?? 0) : 0,
+];
+$expert_2_scores['total'] = array_sum($expert_2_scores);
+
+// Calculate Average scores (average of both experts)
+// Always divide by 2 if both experts exist, otherwise by 1
+$expert_avg_scores = [
+    'section_1' => 0,
+    'section_2' => 0,
+    'section_3' => 0,
+    'section_4' => 0,
+    'section_5' => 0,
+];
+$expert_count = 0;
+if ($expert_1_review) $expert_count++;
+if ($expert_2_review) $expert_count++;
+
+// Always use 2 as divisor if both reviews exist (even if one has 0 score)
+if ($expert_1_review && $expert_2_review) {
+    $expert_count = 2; // Force count to 2 if both exist
+}
+
+if ($expert_count > 0) {
+    foreach (['section_1', 'section_2', 'section_3', 'section_4', 'section_5'] as $section) {
+        $sum = $expert_1_scores[$section] + $expert_2_scores[$section];
+        $expert_avg_scores[$section] = $sum / $expert_count;
+    }
+    $expert_avg_scores['total'] = ($expert_1_scores['total'] + $expert_2_scores['total']) / $expert_count;
+}
 
 // Set flags for read-only mode
 $is_readonly = true;
 $is_chairman_view = true; // Use same view mode as chairman (read-only)
 $is_locked = false;
+
+// For backward compatibility, use average scores as expert_scores
+$expert_scores = $expert_avg_scores;
 $expert_scores['total'] = array_sum($expert_scores);
 ?>
 <!DOCTYPE html>
@@ -377,8 +509,8 @@ $expert_scores['total'] = array_sum($expert_scores);
                     </a>
                 </h4>
                 <h4 class="mt-2">Department Review (Read-Only)</h4>
-                <h5><?php echo htmlspecialchars($dept_name); ?> (Code: <?php echo $dept_code; ?>)</h5>
-                <p class="text-muted">Academic Year: <strong><?php echo $academic_year; ?></strong></p>
+                <h5><?php echo htmlspecialchars($dept_name, ENT_QUOTES, 'UTF-8'); ?> (Code: <?php echo htmlspecialchars($dept_code, ENT_QUOTES, 'UTF-8'); ?>)</h5>
+                <p class="text-muted">Academic Year: <strong><?php echo htmlspecialchars($academic_year, ENT_QUOTES, 'UTF-8'); ?></strong></p>
 
     <!-- Score Summary Card -->
     <div class="card mt-4">
@@ -404,9 +536,11 @@ $expert_scores['total'] = array_sum($expert_scores);
                     <tr>
                         <th>Section</th>
                         <th>Dept Auto Score</th>
-                        <th>Expert Score</th>
+                        <th>Expert 1 Score</th>
+                        <th>Expert 2 Score</th>
+                        <th>Average Score</th>
                         <th>Max Marks</th>
-                        <th>Difference</th>
+                        <th>Difference (Avg - Auto)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -425,13 +559,17 @@ $expert_scores['total'] = array_sum($expert_scores);
                         } else {
                             $auto = $auto_scores[$key] ?? 0;
                         }
-                        $expert = $expert_scores[$key] ?? 0;
-                        $diff = $expert - $auto;
+                        $expert1 = $expert_1_scores[$key] ?? 0;
+                        $expert2 = $expert_2_scores[$key] ?? 0;
+                        $expert_avg = $expert_avg_scores[$key] ?? 0;
+                        $diff = $expert_avg - $auto;
                     ?>
                         <tr>
                             <td><?php echo htmlspecialchars($section['label']); ?></td>
                             <td><strong><?php echo number_format($auto, 2); ?></strong></td>
-                            <td><strong style="color: var(--success-color);"><?php echo number_format($expert, 2); ?></strong></td>
+                            <td><strong style="color: <?php echo $expert1 > 0 ? 'var(--primary-color)' : '#6b7280'; ?>;"><?php echo number_format($expert1, 2); ?></strong></td>
+                            <td><strong style="color: <?php echo $expert2 > 0 ? 'var(--primary-color)' : '#6b7280'; ?>;"><?php echo number_format($expert2, 2); ?></strong></td>
+                            <td><strong style="color: var(--success-color);"><?php echo number_format($expert_avg, 2); ?></strong></td>
                             <td><?php echo $section['max']; ?></td>
                             <td style="color: <?php echo $diff > 0 ? 'var(--success-color)' : ($diff < 0 ? 'var(--danger-color)' : '#6b7280'); ?>;">
                                 <?php echo ($diff >= 0 ? '+' : '') . number_format($diff, 2); ?>
@@ -441,10 +579,12 @@ $expert_scores['total'] = array_sum($expert_scores);
                     <tr class="table-info">
                         <th>TOTAL</th>
                         <th><strong><?php echo number_format($auto_scores['total'] ?? 0, 2); ?></strong></th>
-                        <th><strong style="color: var(--success-color);"><?php echo number_format($expert_scores['total'], 2); ?></strong></th>
+                        <th><strong style="color: <?php echo $expert_1_scores['total'] > 0 ? 'var(--primary-color)' : '#6b7280'; ?>;"><?php echo number_format($expert_1_scores['total'], 2); ?></strong></th>
+                        <th><strong style="color: <?php echo $expert_2_scores['total'] > 0 ? 'var(--primary-color)' : '#6b7280'; ?>;"><?php echo number_format($expert_2_scores['total'], 2); ?></strong></th>
+                        <th><strong style="color: var(--success-color);"><?php echo number_format($expert_avg_scores['total'], 2); ?></strong></th>
                         <th>725</th>
                         <th style="color: <?php 
-                            $total_diff = $expert_scores['total'] - ($auto_scores['total'] ?? 0);
+                            $total_diff = $expert_avg_scores['total'] - ($auto_scores['total'] ?? 0);
                             echo $total_diff > 0 ? 'var(--success-color)' : ($total_diff < 0 ? 'var(--danger-color)' : '#6b7280'); 
                         ?>;">
                             <?php echo ($total_diff >= 0 ? '+' : '') . number_format($total_diff, 2); ?>
