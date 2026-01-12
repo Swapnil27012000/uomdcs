@@ -233,6 +233,81 @@ if (!isset($conn) || !$conn) {
             error_log("Admin AddDepartmentDetails Fatal Error: " . $e->getMessage());
         }
     }
+} elseif (isset($_POST['boss_submit'])) {
+    // Validate CSRF token if available
+    if (file_exists(__DIR__ . '/../csrf.php')) {
+        require_once __DIR__ . '/../csrf.php';
+        if (function_exists('validate_csrf')) {
+            $csrf_token = $_POST['csrf_token'] ?? '';
+            if (empty($csrf_token) || !validate_csrf($csrf_token)) {
+                $error_message = 'Security token validation failed. Please refresh the page and try again.';
+            }
+        }
+    }
+
+    if (empty($error_message)) {
+        try {
+            $boss_email = trim($_POST['boss_email'] ?? '');
+            $boss_password = trim($_POST['boss_password'] ?? '');
+            $boss_permission = trim($_POST['boss_permission'] ?? '');
+
+            if (empty($boss_email) || empty($boss_password) || empty($boss_permission)) {
+                throw new Exception("All fields are required.");
+            }
+
+            if (!filter_var($boss_email, FILTER_VALIDATE_EMAIL)) {
+                throw new Exception("Invalid email format.");
+            }
+
+            // Check if email already exists in boss table
+            $stmt = $conn->prepare("SELECT EMAIL FROM boss WHERE EMAIL = ?");
+            if ($stmt) {
+                $stmt->bind_param("s", $boss_email);
+                $stmt->execute();
+                $res = $stmt->get_result();
+                if ($res->num_rows > 0) {
+                    $stmt->close();
+                    throw new Exception("Email already exists.");
+                }
+                $stmt->close();
+            }
+
+            // Check if email exists in department_master
+            $stmt = $conn->prepare("SELECT EMAIL FROM department_master WHERE EMAIL = ?");
+            if ($stmt) {
+                $stmt->bind_param("s", $boss_email);
+                $stmt->execute();
+                $res = $stmt->get_result();
+                if ($res->num_rows > 0) {
+                    $stmt->close();
+                    throw new Exception("Email already exists in Department Master.");
+                }
+                $stmt->close();
+            }
+
+            // Insert into boss table
+            $stmt = $conn->prepare("INSERT INTO boss (EMAIL, PASS_WORD, PERMISSION) VALUES (?, ?, ?)");
+            if (!$stmt) {
+                throw new Exception("Database prepare error: " . $conn->error);
+            }
+
+            $stmt->bind_param("sss", $boss_email, $boss_password, $boss_permission);
+            
+            if ($stmt->execute()) {
+                $success_message = "New user permission added successfully!";
+            } else {
+                throw new Exception("Failed to add user: " . $stmt->error);
+            }
+            $stmt->close();
+
+        } catch (Exception $e) {
+            $error_message = $e->getMessage();
+            error_log("Admin AddBoss Error: " . $e->getMessage());
+        } catch (Error $e) {
+            $error_message = "A fatal error occurred.";
+            error_log("Admin AddBoss Fatal Error: " . $e->getMessage());
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -587,6 +662,81 @@ if (!isset($conn) || !$conn) {
                         </button>
                     </form>
                 </div>
+
+                <div class="form-card mt-4">
+                    <h3 class="page-title">Boss / Permission Details</h3>
+                    <form method="post">
+                        <?php if (file_exists(__DIR__ . '/../csrf.php')): 
+                            require_once __DIR__ . '/../csrf.php';
+                            if (function_exists('csrf_field')) {
+                                echo csrf_field();
+                            }
+                        endif; ?>
+                        
+                        <div class="row">
+                            <div class="col-md-4 mb-4">
+                                <label class="form-label"><i class="fas fa-user-shield me-2" style="color: #667eea;"></i>Permission Level</label>
+                                <div class="input-group-icon">
+                                    <i class="fas fa-user-lock"></i>
+                                    <select name="boss_permission" class="form-label" required>
+                                        <option value="">Select Permission</option>
+                                        <option value="admin">Admin</option>
+                                        <option value="AAQA_login">AAQA</option>
+                                        <option value="MUIBEAS">MUIBEAS</option>
+                                        <option value="Expert_comty_login">Expert Committee</option>
+                                        <option value="Chairman_login">Chairman</option>
+                                        <option value="verification_committee">Verification Committee</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4 mb-4">
+                                <label class="form-label"><i class="fas fa-envelope me-2" style="color: #667eea;"></i>Email ID</label>
+                                <div class="input-group-icon">
+                                    <i class="fas fa-at"></i>
+                                    <input type="email" name="boss_email" id="boss_email" class="form-control" placeholder="Enter Email ID" required>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4 mb-4">
+                                <label class="form-label"><i class="fas fa-key me-2" style="color: #667eea;"></i>Password</label>
+                                <div class="input-group-icon">
+                                    <i class="fas fa-lock"></i>
+                                    <input type="text" name="boss_password" id="boss_password" class="form-control" placeholder="Enter Password" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-center gap-3">
+                            <button type="button" onclick="generateCredentials()" class="btn btn-secondary" style="margin-top: 30px;">
+                                <i class="fas fa-magic me-2"></i>Generate Credentials
+                            </button>
+                            <button type="submit" name="boss_submit" class="btn btn-primary" style="margin-top: 30px;">
+                                <i class="fas fa-plus-circle me-2"></i>ADD PERMISSION
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <script>
+                function generateCredentials() {
+                    const randomStr = Math.random().toString(36).substring(2, 8);
+                    const emailField = document.getElementById('boss_email');
+                    if(emailField) {
+                        emailField.value = 'uomdcs_' + randomStr + '@mu.ac.in';
+                    }
+                    
+                    const passwordField = document.getElementById('boss_password');
+                    if(passwordField) {
+                        const pChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$";
+                        let password = "";
+                        for (let i = 0; i < 12; i++) {
+                            password += pChars.charAt(Math.floor(Math.random() * pChars.length));
+                        }
+                        passwordField.value = password;
+                    }
+                }
+                </script>
             </div>
         </div>
     </div>
