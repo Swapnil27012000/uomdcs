@@ -682,7 +682,7 @@ if (!isset($conn) || !$conn) {
                                         <option value="">Select Permission</option>
                                         <option value="admin">Admin</option>
                                         <option value="AAQA_login">AAQA</option>
-                                        <option value="MUIBEAS">MUIBEAS</option>
+                                        <option value="MUIBEAS">MUIDEAS</option>
                                         <option value="Expert_comty_login">Expert Committee</option>
                                         <option value="Chairman_login">Chairman</option>
                                         <option value="verification_committee">Verification Committee</option>
