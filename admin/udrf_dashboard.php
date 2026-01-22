@@ -5,19 +5,58 @@
  * Copied from Chairman_login/dashboard.php
  */
 
+// CRITICAL: Enable error reporting for debugging (remove in production)
+error_reporting(E_ALL);
+ini_set('display_errors', 0); // Don't display to users
+ini_set('log_errors', 1); // Log to error log
+
+// Start output buffering
+if (ob_get_level() === 0) {
+    ob_start();
+}
+
+try {
 require('session.php');
 require('udrf_functions.php');
 
 // Load common functions for getAcademicYear()
-if (file_exists(__DIR__ . '/../common_functions.php')) {
-    require_once(__DIR__ . '/../common_functions.php');
-} elseif (file_exists(__DIR__ . '/../common_progress_functions.php')) {
-    require_once(__DIR__ . '/../common_progress_functions.php');
+if (!function_exists('getAcademicYear')) {
+    if (file_exists(__DIR__ . '/../common_functions.php')) {
+        require_once(__DIR__ . '/../common_functions.php');
+    } elseif (file_exists(__DIR__ . '/../common_progress_functions.php')) {
+        require_once(__DIR__ . '/../common_progress_functions.php');
+    }
+}
+
+if (!function_exists('getAcademicYear')) {
+        error_log("CRITICAL: getAcademicYear function not found in udrf_dashboard.php");
+    die("Error: getAcademicYear function not found. Please contact administrator.");
 }
 
 $academic_year = getAcademicYear();
 $categories = getAllCategoriesWithCounts($academic_year);
 $overall_ranking = getAllDepartmentsOverallRanking($academic_year);
+    
+    // CRITICAL: Check if functions returned valid data
+    if (!is_array($categories)) {
+        error_log("CRITICAL: getAllCategoriesWithCounts returned non-array in udrf_dashboard.php");
+        $categories = [];
+    }
+    if (!is_array($overall_ranking)) {
+        error_log("CRITICAL: getAllDepartmentsOverallRanking returned non-array in udrf_dashboard.php");
+        $overall_ranking = [];
+    }
+} catch (Exception $e) {
+    ob_end_clean();
+    error_log("FATAL ERROR in udrf_dashboard.php: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
+    http_response_code(500);
+    die("System error occurred. Please contact administrator.");
+} catch (Error $e) {
+    ob_end_clean();
+    error_log("FATAL ERROR in udrf_dashboard.php: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
+    http_response_code(500);
+    die("System error occurred. Please contact administrator.");
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">

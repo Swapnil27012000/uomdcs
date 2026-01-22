@@ -293,6 +293,42 @@ $is_locked = false;
 // For backward compatibility, use average scores as expert_scores
 $expert_scores = $expert_avg_scores;
 $expert_scores['total'] = array_sum($expert_scores);
+
+// CRITICAL: Load verification flags for displaying "Reviewed Committee" status
+// This is needed for section_brief_details.php and other section files to show verification badges
+$all_verification_flags = [];
+$table_check = @$conn->query("SHOW TABLES LIKE 'verification_flags'");
+if ($table_check && $table_check->num_rows > 0) {
+    $flags_query = "SELECT section_number, item_number, verification_status, is_locked, committee_email
+                    FROM verification_flags
+                    WHERE dept_id = ? AND academic_year = ?";
+    $flags_stmt = $conn->prepare($flags_query);
+    if ($flags_stmt) {
+        $flags_stmt->bind_param("is", $dept_id, $academic_year);
+        $flags_stmt->execute();
+        $flags_result = $flags_stmt->get_result();
+        while ($flag_row = $flags_result->fetch_assoc()) {
+            $key = $flag_row['section_number'] . '_' . $flag_row['item_number'];
+            if (!isset($all_verification_flags[$key])) {
+                $all_verification_flags[$key] = [];
+            }
+            $all_verification_flags[$key][] = $flag_row;
+        }
+        if ($flags_result) {
+            mysqli_free_result($flags_result);
+        }
+        $flags_stmt->close();
+    }
+}
+if ($table_check) {
+    mysqli_free_result($table_check);
+}
+
+// Store in globals for section files (needed by section_brief_details.php and other section files)
+$GLOBALS['email'] = $email;
+$GLOBALS['dept_id'] = $dept_id;
+$GLOBALS['academic_year'] = $academic_year;
+$GLOBALS['all_verification_flags'] = $all_verification_flags;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -604,6 +640,9 @@ $expert_scores['total'] = array_sum($expert_scores);
         // CRITICAL: Store Section I value BEFORE including section1_faculty_output.php
         $section1_before_include = $auto_scores['section_1'];
         
+        // Include Section A (Brief Details) first - this shows the "Reviewed Committee" column
+        include('../Expert_comty_login/section_brief_details.php');
+        
         include('../Expert_comty_login/section1_faculty_output.php');
         
         // CRITICAL: Restore Section I value AFTER including section1_faculty_output.php
@@ -653,8 +692,81 @@ $expert_scores['total'] = array_sum($expert_scores);
         };
     </script>
     
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'))
+            var popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
+                return new bootstrap.Popover(popoverTriggerEl)
+            })
+        });
+    </script>
+    
+    <!-- Popup functionality for verification committee remark -->
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Create popup element
+        const popup = document.createElement('div');
+        popup.id = 'remark-popup';
+        popup.style.cssText = 'display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 10px; box-shadow: 0 5px 30px rgba(0,0,0,0.3); z-index: 10000; max-width: 500px; max-height: 400px; overflow-y: auto;';
+        popup.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 10px;">
+                <h5 style="margin: 0; color: #667eea;"><i class="fas fa-comment-alt"></i> Verification Committee Remark</h5>
+                <button onclick="document.getElementById('remark-popup').style.display='none'" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #666;">&times;</button>
+            </div>
+            <div id="remark-content" style="color: #333; line-height: 1.6;"></div>
+        `;
+        document.body.appendChild(popup);
+        
+        // Add click handlers to all verifier role labels
+        document.querySelectorAll('.verifier-role-label').forEach(function(label) {
+            label.style.cursor = 'pointer';
+            label.addEventListener('click', function() {
+                const role = this.getAttribute('data-role');
+                const remark = this.getAttribute('data-remark');
+                
+                if (remark && remark.trim() !== '') {
+                    document.getElementById('remark-content').innerHTML = `
+                        <p><strong>Role:</strong> ${role}</p>
+                        <p><strong>Remark:</strong></p>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin-top: 10px; white-space: pre-wrap;">${remark}</div>
+                    `;
+                    popup.style.display = 'block';
+                } else {
+                    document.getElementById('remark-content').innerHTML = `
+                        <p><strong>Role:</strong> ${role}</p>
+                        <p style="color: #999; font-style: italic;">No remark provided.</p>
+                    `;
+                    popup.style.display = 'block';
+                }
+            });
+            
+            // Add hover effect
+            label.addEventListener('mouseenter', function() {
+                if (this.getAttribute('data-remark') && this.getAttribute('data-remark').trim() !== '') {
+                    this.style.textDecoration = 'underline';
+                    this.style.color = '#667eea';
+                }
+            });
+            label.addEventListener('mouseleave', function() {
+                this.style.textDecoration = 'none';
+                this.style.color = '';
+            });
+        });
+        
+        // Close popup when clicking outside
+        document.addEventListener('click', function(e) {
+            if (e.target === popup || popup.contains(e.target)) {
+                return;
+            }
+            if (!e.target.closest('.verifier-role-label')) {
+                popup.style.display = 'none';
+            }
+        });
+    });
+    </script>
     <!-- Footer -->
     <?php include '../footer_main.php'; ?>
+    
 </body>
 </html>
 

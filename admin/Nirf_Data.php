@@ -6,18 +6,19 @@ require('session.php');
 
 error_reporting(0);
 
-// Academic year logic - matches dept_login calculation
-// June 2025 to May 2026 = 2024-2025
-// June 2026 to May 2027 = 2025-2026
-$current_year = (int)date("Y");
-$current_month = (int)date("n"); // 1-12
-
-if ($current_month >= 6) {
-    // June onwards: current year is the ending year (e.g., June 2025 = 2024-2025)
-    $A_YEAR = ($current_year - 1) . '-' . $current_year;
+// Academic year logic - use same centralized logic as dept_login
+if (file_exists(__DIR__ . '/../dept_login/common_functions.php')) {
+    require_once(__DIR__ . '/../dept_login/common_functions.php');
+}
+if (function_exists('getAcademicYear')) {
+    $A_YEAR = getAcademicYear();
 } else {
-    // January to May: previous year is the ending year (e.g., March 2025 = 2024-2025)
-    $A_YEAR = ($current_year - 1) . '-' . $current_year;
+    // Fallback: July onwards (month >= 7) is current_year-current_year+1
+    $current_year = (int) date('Y');
+    $current_month = (int) date('n');
+    $A_YEAR = ($current_month >= 7)
+        ? $current_year . '-' . ($current_year + 1)
+        : ($current_year - 2) . '-' . ($current_year - 1);
 }
 
 $dept = $_SESSION['dept_id'];
@@ -281,77 +282,86 @@ $dept = $_SESSION['dept_id'];
                 <div class="form-card">
 
                     <div class="section-header">
-                        <h4><i></i>I. Sanctioned(Approved) Intake </h4>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="m-0"><i></i>I. Sanctioned(Approved) Intake </h4>
+                            <a href="download_nirf_excel.php" class="btn btn-sm btn-success"><i class="fas fa-file-excel"></i> Download NIRF Excel File</a>
+                        </div>
                         <div style="border: 1px solid #dee2e6; border-radius: 4px;">
                             <div style="max-height: 450px; overflow-y: auto; overflow-x: auto;">
-                                <table class="table table-bordered table-striped mb-0" id="collegetable" style="width:100%; margin-bottom: 0;">
-                                    <thead class="table-light" style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
-                                    <tr>
-                                        <th>Programme Type</th>
-                                        <th>Intake Capacity (All Years Total) <?php echo htmlspecialchars($A_YEAR, ENT_QUOTES, 'UTF-8'); ?></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php
-                                    // Check connection before use
-                                    if (!isset($conn) || !$conn) {
-                                        require_once(__DIR__ . '/../config.php');
-                                    }
-                                    
-                                    // Use prepared statement and exclude test departments
-                                    // CRITICAL: Use COALESCE to prefer total_intake over intake_capacity
-                                    // total_intake is calculated from year-wise breakdowns and represents all years' intake
-                                    $query = "SELECT a.programme_type, 
-                                              SUM(COALESCE(NULLIF(a.total_intake, 0), a.intake_capacity, 0)) as total_capacity
+                                <table class="table table-bordered table-striped mb-0" id="collegetable"
+                                    style="width:100%; margin-bottom: 0;">
+                                    <thead class="table-light"
+                                        style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
+                                        <tr>
+                                            <th>Programme Type</th>
+                                            <th>Intake Capacity (All Years Total)
+                                                <?php echo htmlspecialchars($A_YEAR, ENT_QUOTES, 'UTF-8'); ?>
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php
+                                        // Check connection before use
+                                        if (!isset($conn) || !$conn) {
+                                            require_once(__DIR__ . '/../config.php');
+                                        }
+
+                                        // Use prepared statement and exclude test departments
+                                        // CRITICAL: Use COALESCE to prefer total_intake over intake_capacity
+                                        // total_intake is calculated from year-wise breakdowns and represents all years' intake
+                                        $query = "SELECT a.programme_type, 
+                                              SUM(a.year_1_capacity) as total_capacity
                                           FROM programmes a 
                                               LEFT JOIN department_master dm ON dm.DEPT_ID = a.DEPT_ID
                                               WHERE a.A_YEAR = ? 
-                                              AND a.DEPT_ID NOT IN (119,120,122,136)
+                                              AND a.DEPT_ID NOT IN (119,120,122,136,135)
                                               AND (dm.DEPT_COLL_NO IS NULL OR dm.DEPT_COLL_NO NOT IN (9998, 9999956, 99999, 9997, 9995))
                                               GROUP BY a.programme_type
                                               ORDER BY a.programme_type";
-                                    $stmt = mysqli_prepare($conn, $query);
-                                    $grand_total_intake = 0;
-                                    $has_data = false;
-                                    
-                                    if ($stmt) {
-                                        mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
-                                        if (mysqli_stmt_execute($stmt)) {
-                                            $result = mysqli_stmt_get_result($stmt);
-                                    if ($result) {
-                                        while ($row = mysqli_fetch_assoc($result)) {
-                                                    $has_data = true;
-                                                    $programme_type = htmlspecialchars($row['programme_type'] ?? '', ENT_QUOTES, 'UTF-8');
-                                                    $intake_capacity = (int)($row['total_capacity'] ?? 0);
-                                                    $grand_total_intake += $intake_capacity;
-                                            ?>
-                                            <tr>
-                                                <td class="text-center"><?php echo $programme_type; ?></td>
-                                                <td><?php echo $intake_capacity; ?></td>
-                                            </tr>
-                                            <?php
-                                        }
-                                                mysqli_free_result($result);
+                                        $stmt = mysqli_prepare($conn, $query);
+                                        $grand_total_intake = 0;
+                                        $has_data = false;
+
+                                        if ($stmt) {
+                                            mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
+                                            if (mysqli_stmt_execute($stmt)) {
+                                                $result = mysqli_stmt_get_result($stmt);
+                                                if ($result) {
+                                                    while ($row = mysqli_fetch_assoc($result)) {
+                                                        $has_data = true;
+                                                        $programme_type = htmlspecialchars($row['programme_type'] ?? '', ENT_QUOTES, 'UTF-8');
+                                                        $intake_capacity = (int) ($row['total_capacity'] ?? 0);
+                                                        $grand_total_intake += $intake_capacity;
+                                                        ?>
+                                                        <tr>
+                                                            <td class="text-center"><?php echo $programme_type; ?></td>
+                                                            <td><?php echo $intake_capacity; ?></td>
+                                                        </tr>
+                                                        <?php
+                                                    }
+                                                    mysqli_free_result($result);
+                                                }
                                             }
+                                            mysqli_stmt_close($stmt);
                                         }
-                                        mysqli_stmt_close($stmt);
-                                    }
-                                    
-                                    if (!$has_data) {
-                                        echo '<tr><td colspan="2">No data found for the selected academic year.</td></tr>';
-                                    }
-                                    ?>
-                                </tbody>
-                            </table>
+
+                                        if (!$has_data) {
+                                            echo '<tr><td colspan="2">No data found for the selected academic year.</td></tr>';
+                                        }
+                                        ?>
+                                    </tbody>
+                                </table>
                             </div>
                             <?php
                             if (isset($has_data) && $has_data) {
                                 ?>
-                                <table class="table table-bordered mb-0" style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
                                     <tfoot>
                                         <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
                                             <td class="text-end"><strong>TOTAL</strong></td>
-                                            <td class="text-center"><strong>Total Intake Capacity: <?php echo $grand_total_intake; ?></strong></td>
+                                            <td class="text-center"><strong>Total Intake Capacity:
+                                                    <?php echo $grand_total_intake; ?></strong></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -377,37 +387,39 @@ $dept = $_SESSION['dept_id'];
                         <h4><i></i>II. Actual Enrollment </h4>
                         <div style="border: 1px solid #dee2e6; border-radius: 4px;">
                             <div style="max-height: 450px; overflow-y: auto; overflow-x: auto;">
-                                <table class="table table-bordered table-striped mb-0" id="collegetable" style="width:100%; margin-bottom: 0;">
-                                    <thead class="table-light" style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
-                                    <tr>
-                                        <th>Programme Type</th>
-                                        <th>Male Students</th>
-                                        <th>Female Students</th>
-                                        <th>Total Students</th>
-                                        <th>Male Within State</th>
-                                        <th>Female Within State</th>
-                                        <th>Male Outside State Within Country</th>
-                                        <th>Female Outside State Within Country</th>
-                                        <th>Male Outside Country</th>
-                                        <th>Female Outside Country</th>
-                                        <th>Econamic Backward (Male+Female)</th>
-                                        <th>Social Backward (SC+ST+OBC) (Male+Female)</th>
-                                        <th>Government Freeship/Scholarship (Male+Female)</th>
-                                        <th>Institution Freeship/Scholarship (Male+Female)</th>
-                                        <th>Private Body Freeship/Scholarship (Male+Female)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php
-                                    // Check connection before use
-                                    if (!isset($conn) || !$conn) {
-                                        require_once(__DIR__ . '/../config.php');
-                                    }
-                                    
-                                    // Use prepared statement and exclude test departments
-                                    // CRITICAL: Join on both DEPT_ID AND PROGRAM_CODE to prevent cartesian product
-                                    // intake_actual_strength.PROGRAM_CODE must match programmes.programme_code
-                                    $query = "SELECT b.programme_type, 
+                                <table class="table table-bordered table-striped mb-0" id="collegetable"
+                                    style="width:100%; margin-bottom: 0;">
+                                    <thead class="table-light"
+                                        style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
+                                        <tr>
+                                            <th>Programme Type</th>
+                                            <th>Male Students</th>
+                                            <th>Female Students</th>
+                                            <th>Total Students</th>
+                                            <th>Male Within State</th>
+                                            <th>Female Within State</th>
+                                            <th>Male Outside State Within Country</th>
+                                            <th>Female Outside State Within Country</th>
+                                            <th>Male Outside Country</th>
+                                            <th>Female Outside Country</th>
+                                            <th>Econamic Backward (Male+Female)</th>
+                                            <th>Social Backward (SC+ST+OBC) (Male+Female)</th>
+                                            <th>Government Freeship/Scholarship (Male+Female)</th>
+                                            <th>Institution Freeship/Scholarship (Male+Female)</th>
+                                            <th>Private Body Freeship/Scholarship (Male+Female)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php
+                                        // Check connection before use
+                                        if (!isset($conn) || !$conn) {
+                                            require_once(__DIR__ . '/../config.php');
+                                        }
+
+                                        // Use prepared statement and exclude test departments
+                                        // CRITICAL: Join on both DEPT_ID AND PROGRAM_CODE to prevent cartesian product
+                                        // intake_actual_strength.PROGRAM_CODE must match programmes.programme_code
+                                        $query = "SELECT b.programme_type, 
                                      SUM(a.Total_number_of_Male_Students) as Total_number_of_Male_Students,
                                      SUM(a.Total_number_of_Female_Students) as Total_number_of_Female_Students, 
                                      SUM(a.Total_number_of_Male_Students + a.Total_number_of_Female_Students) as total,
@@ -430,69 +442,84 @@ $dept = $_SESSION['dept_id'];
                                         AND (dm.DEPT_COLL_NO IS NULL OR dm.DEPT_COLL_NO NOT IN (9998, 9999956, 99999, 9997, 9995))
                                         GROUP BY b.programme_type
                                         ORDER BY b.programme_type";
-                                    $stmt = mysqli_prepare($conn, $query);
-                                    $grand_total_male = 0;
-                                    $grand_total_female = 0;
-                                    $grand_total_students = 0;
-                                    $has_data = false;
-                                    
-                                    if ($stmt) {
-                                        mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
-                                        if (mysqli_stmt_execute($stmt)) {
-                                            $result = mysqli_stmt_get_result($stmt);
-                                    if ($result) {
-                                        while ($row = mysqli_fetch_assoc($result)) {
-                                                    $has_data = true;
-                                                    $programme_type = htmlspecialchars($row['programme_type'] ?? '', ENT_QUOTES, 'UTF-8');
-                                                    $male = (int)($row['Total_number_of_Male_Students'] ?? 0);
-                                                    $female = (int)($row['Total_number_of_Female_Students'] ?? 0);
-                                                    $total = (int)($row['total'] ?? 0);
-                                                    $grand_total_male += $male;
-                                                    $grand_total_female += $female;
-                                                    $grand_total_students += $total;
-                                            ?>
-                                            <tr>
-                                                        <td><?php echo $programme_type; ?></td>
-                                                        <td><?php echo $male; ?></td>
-                                                        <td><?php echo $female; ?></td>
-                                                        <td><?php echo $total; ?></td>
-                                                        <td><?php echo htmlspecialchars($row['Male_within_state'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['Female_within_state'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['Male_outside_state'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['Female_outside_state'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['Male_outside_country'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['Female_outside_country'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['eb'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['sb'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['Govt_Scholarship'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['Inst_Scholarship'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['Prvt_Scholarship'] ?? 0, ENT_QUOTES, 'UTF-8'); ?></td>
-                                            </tr>
-                                            <?php
-                                        }
-                                                mysqli_free_result($result);
+                                        $stmt = mysqli_prepare($conn, $query);
+                                        $grand_total_male = 0;
+                                        $grand_total_female = 0;
+                                        $grand_total_students = 0;
+                                        $has_data = false;
+
+                                        if ($stmt) {
+                                            mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
+                                            if (mysqli_stmt_execute($stmt)) {
+                                                $result = mysqli_stmt_get_result($stmt);
+                                                if ($result) {
+                                                    while ($row = mysqli_fetch_assoc($result)) {
+                                                        $has_data = true;
+                                                        $programme_type = htmlspecialchars($row['programme_type'] ?? '', ENT_QUOTES, 'UTF-8');
+                                                        $male = (int) ($row['Total_number_of_Male_Students'] ?? 0);
+                                                        $female = (int) ($row['Total_number_of_Female_Students'] ?? 0);
+                                                        $total = (int) ($row['total'] ?? 0);
+                                                        $grand_total_male += $male;
+                                                        $grand_total_female += $female;
+                                                        $grand_total_students += $total;
+                                                        ?>
+                                                        <tr>
+                                                            <td><?php echo $programme_type; ?></td>
+                                                            <td><?php echo $male; ?></td>
+                                                            <td><?php echo $female; ?></td>
+                                                            <td><?php echo $total; ?></td>
+                                                            <td><?php echo htmlspecialchars($row['Male_within_state'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['Female_within_state'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['Male_outside_state'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['Female_outside_state'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['Male_outside_country'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['Female_outside_country'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['eb'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['sb'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['Govt_Scholarship'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['Inst_Scholarship'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['Prvt_Scholarship'] ?? 0, ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                        </tr>
+                                                        <?php
+                                                    }
+                                                    mysqli_free_result($result);
+                                                }
                                             }
+                                            mysqli_stmt_close($stmt);
                                         }
-                                        mysqli_stmt_close($stmt);
-                                    }
-                                    
-                                    if (!$has_data) {
-                                        echo '<tr><td colspan="15">No data found for the selected academic year.</td></tr>';
-                                    }
-                                    ?>
-                                </tbody>
-                            </table>
+
+                                        if (!$has_data) {
+                                            echo '<tr><td colspan="15">No data found for the selected academic year.</td></tr>';
+                                        }
+                                        ?>
+                                    </tbody>
+                                </table>
                             </div>
                             <?php
                             if (isset($has_data) && $has_data) {
                                 ?>
-                                <table class="table table-bordered mb-0" style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
                                     <tfoot>
                                         <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
                                             <td class="text-end"><strong>TOTAL</strong></td>
-                                            <td class="text-center"><strong>Total Male: <?php echo $grand_total_male; ?></strong></td>
-                                            <td class="text-center"><strong>Total Female: <?php echo $grand_total_female; ?></strong></td>
-                                            <td class="text-center"><strong>Total Students: <?php echo $grand_total_students; ?></strong></td>
+                                            <td class="text-center"><strong>Total Male:
+                                                    <?php echo $grand_total_male; ?></strong></td>
+                                            <td class="text-center"><strong>Total Female:
+                                                    <?php echo $grand_total_female; ?></strong></td>
+                                            <td class="text-center"><strong>Total Students:
+                                                    <?php echo $grand_total_students; ?></strong></td>
                                             <td colspan="11"></td>
                                         </tr>
                                     </tfoot>
@@ -504,19 +531,19 @@ $dept = $_SESSION['dept_id'];
                     </div>
                     <div class="section-header">
                         <h4><i></i>III. Placement & Higher Studies</h4>
-     <div class="table-responsive" style="max-width: 100%; overflow-x: auto;">
+                        <div class="table-responsive" style="max-width: 100%; overflow-x: auto;">
                             <table class="table table-bordered" id="collegetable" style="width:100%;">
                                 <thead>
                                     <tr>
                                         <th>Programme Type</th>
                                         <th>Total No. of Students</th>
-                                        <th>No. of Students Admitted through Lateral Entry</th> 
+                                        <th>No. of Students Admitted through Lateral Entry</th>
                                         <th>Total No. of Students Graduated</th>
                                         <th>Total No. of Students Placed</th>
                                         <th>No. of Students in Higher Studies</th>
                                         <th>No. of Students Qualifying Exams like GATE, CAT, NET, etc.</th>
                                         <th>Median Salary of Placed Students (in INR)</th>
-                                       
+
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -525,7 +552,7 @@ $dept = $_SESSION['dept_id'];
                                     if (!isset($conn) || !$conn) {
                                         require_once(__DIR__ . '/../config.php');
                                     }
-                                    
+
                                     // Use prepared statement and exclude test departments
                                     $query = "SELECT 
     p.A_YEAR,
@@ -585,39 +612,39 @@ GROUP BY p.A_YEAR, p.programme_type";
                                     $grand_total_higher_studies = 0;
                                     $grand_total_qualifying = 0;
                                     $has_data = false;
-                                    
+
                                     if ($stmt) {
                                         // Bind A_YEAR twice: once for the median salary subquery, once for the main query
                                         mysqli_stmt_bind_param($stmt, 'ss', $A_YEAR, $A_YEAR);
                                         if (mysqli_stmt_execute($stmt)) {
                                             $result = mysqli_stmt_get_result($stmt);
-                                    if ($result) {
-                                        while ($row = mysqli_fetch_assoc($result)) {
+                                            if ($result) {
+                                                while ($row = mysqli_fetch_assoc($result)) {
                                                     $has_data = true;
                                                     $programme_type = htmlspecialchars($row['programme_type'] ?? '', ENT_QUOTES, 'UTF-8');
-                                                    $total_students = (int)($row['TOTAL_NO_OF_STUDENT'] ?? 0);
-                                                    $lateral = (int)($row['NUM_OF_STUDENTS_ADMITTED_LATERAL_ENTRY'] ?? 0);
-                                                    $graduated = (int)($row['TOTAL_NUM_OF_STUDENTS_GRADUATED'] ?? 0);
-                                                    $placed = (int)($row['TOTAL_NUM_OF_STUDENTS_PLACED'] ?? 0);
-                                                    $higher_studies = (int)($row['NUM_OF_STUDENTS_IN_HIGHER_STUDIES'] ?? 0);
-                                                    $qualifying = (int)($row['STUDENTS_QUALIFYING_EXAMS'] ?? 0);
-                                                    
+                                                    $total_students = (int) ($row['TOTAL_NO_OF_STUDENT'] ?? 0);
+                                                    $lateral = (int) ($row['NUM_OF_STUDENTS_ADMITTED_LATERAL_ENTRY'] ?? 0);
+                                                    $graduated = (int) ($row['TOTAL_NUM_OF_STUDENTS_GRADUATED'] ?? 0);
+                                                    $placed = (int) ($row['TOTAL_NUM_OF_STUDENTS_PLACED'] ?? 0);
+                                                    $higher_studies = (int) ($row['NUM_OF_STUDENTS_IN_HIGHER_STUDIES'] ?? 0);
+                                                    $qualifying = (int) ($row['STUDENTS_QUALIFYING_EXAMS'] ?? 0);
+
                                                     // Format median salary: show "-" if NULL, 0, or no placed students
                                                     $median_salary_raw = $row['Median_salary'] ?? null;
-                                                    if ($placed > 0 && $median_salary_raw !== null && (double)$median_salary_raw > 0) {
-                                                        $median_salary = number_format((double)$median_salary_raw, 0);
+                                                    if ($placed > 0 && $median_salary_raw !== null && (double) $median_salary_raw > 0) {
+                                                        $median_salary = number_format((double) $median_salary_raw, 0);
                                                     } else {
                                                         $median_salary = '-';
                                                     }
-                                                    
+
                                                     $grand_total_students += $total_students;
                                                     $grand_total_lateral += $lateral;
                                                     $grand_total_graduated += $graduated;
                                                     $grand_total_placed += $placed;
                                                     $grand_total_higher_studies += $higher_studies;
                                                     $grand_total_qualifying += $qualifying;
-                                            ?>
-                                            <tr>
+                                                    ?>
+                                                    <tr>
                                                         <td><?php echo $programme_type; ?></td>
                                                         <td><?php echo $total_students; ?></td>
                                                         <td><?php echo $lateral; ?></td>
@@ -626,15 +653,15 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                         <td><?php echo $higher_studies; ?></td>
                                                         <td><?php echo $qualifying; ?></td>
                                                         <td><?php echo $median_salary; ?></td>
-                                            </tr>
-                                            <?php
-                                        }
+                                                    </tr>
+                                                    <?php
+                                                }
                                                 mysqli_free_result($result);
                                             }
                                         }
                                         mysqli_stmt_close($stmt);
                                     }
-                                    
+
                                     if (!$has_data) {
                                         echo '<tr><td colspan="8">No data found for the selected academic year.</td></tr>';
                                     }
@@ -644,16 +671,23 @@ GROUP BY p.A_YEAR, p.programme_type";
                             <?php
                             if (isset($has_data) && $has_data) {
                                 ?>
-                                <table class="table table-bordered mb-0" style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
                                     <tfoot>
                                         <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
                                             <td class="text-end"><strong>TOTAL</strong></td>
-                                            <td class="text-center"><strong>Total Students: <?php echo $grand_total_students; ?></strong></td>
-                                            <td class="text-center"><strong>Total Lateral Entry: <?php echo $grand_total_lateral; ?></strong></td>
-                                            <td class="text-center"><strong>Total Graduated: <?php echo $grand_total_graduated; ?></strong></td>
-                                            <td class="text-center"><strong>Total Placed: <?php echo $grand_total_placed; ?></strong></td>
-                                            <td class="text-center"><strong>Total Higher Studies: <?php echo $grand_total_higher_studies; ?></strong></td>
-                                            <td class="text-center"><strong>Total Qualifying Exams: <?php echo $grand_total_qualifying; ?></strong></td>
+                                            <td class="text-center"><strong>Total Students:
+                                                    <?php echo $grand_total_students; ?></strong></td>
+                                            <td class="text-center"><strong>Total Lateral Entry:
+                                                    <?php echo $grand_total_lateral; ?></strong></td>
+                                            <td class="text-center"><strong>Total Graduated:
+                                                    <?php echo $grand_total_graduated; ?></strong></td>
+                                            <td class="text-center"><strong>Total Placed:
+                                                    <?php echo $grand_total_placed; ?></strong></td>
+                                            <td class="text-center"><strong>Total Higher Studies:
+                                                    <?php echo $grand_total_higher_studies; ?></strong></td>
+                                            <td class="text-center"><strong>Total Qualifying Exams:
+                                                    <?php echo $grand_total_qualifying; ?></strong></td>
                                             <td>-</td>
                                         </tr>
                                     </tfoot>
@@ -681,7 +715,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                     if (!isset($conn) || !$conn) {
                                         require_once(__DIR__ . '/../config.php');
                                     }
-                                    
+
                                     // CRITICAL: Use prepared statement for security
                                     $query = "SELECT 
                                         SUM(FULL_TIME_MALE_STUDENTS + FULL_TIME_FEMALE_STUDENTS) as full_time,
@@ -693,7 +727,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                     GROUP BY pd.A_YEAR";
                                     $stmt = mysqli_prepare($conn, $query);
                                     $has_data = false;
-                                    
+
                                     if ($stmt) {
                                         mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
                                         if (mysqli_stmt_execute($stmt)) {
@@ -701,22 +735,22 @@ GROUP BY p.A_YEAR, p.programme_type";
                                             if ($result && mysqli_num_rows($result) > 0) {
                                                 while ($row = mysqli_fetch_assoc($result)) {
                                                     $has_data = true;
-                                                    $full_time = (int)($row['full_time'] ?? 0);
-                                                    $part_time = (int)($row['part_time'] ?? 0);
-                                            ?>
-                                            <tr>
-                                                <td>Total</td>
-                                                <td><?php echo $full_time; ?></td>
-                                                <td><?php echo $part_time; ?></td>
-                                            </tr>
-                                            <?php
+                                                    $full_time = (int) ($row['full_time'] ?? 0);
+                                                    $part_time = (int) ($row['part_time'] ?? 0);
+                                                    ?>
+                                                    <tr>
+                                                        <td>Total</td>
+                                                        <td><?php echo $full_time; ?></td>
+                                                        <td><?php echo $part_time; ?></td>
+                                                    </tr>
+                                                    <?php
                                                 }
                                                 mysqli_free_result($result);
                                             }
                                         }
                                         mysqli_stmt_close($stmt);
                                     }
-                                    
+
                                     if (!$has_data) {
                                         echo '<tr><td colspan="3">No Ph.D student data found for the selected academic year.</td></tr>';
                                     }
@@ -743,7 +777,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                     if (!isset($conn) || !$conn) {
                                         require_once(__DIR__ . '/../config.php');
                                     }
-                                    
+
                                     // CRITICAL: Use prepared statement for security
                                     $query = "SELECT 
                                         SUM(patents_published_2024) as current_published, 
@@ -755,7 +789,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                     GROUP BY fo.A_YEAR";
                                     $stmt = mysqli_prepare($conn, $query);
                                     $has_data = false;
-                                    
+
                                     if ($stmt) {
                                         mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
                                         if (mysqli_stmt_execute($stmt)) {
@@ -763,22 +797,22 @@ GROUP BY p.A_YEAR, p.programme_type";
                                             if ($result && mysqli_num_rows($result) > 0) {
                                                 while ($row = mysqli_fetch_assoc($result)) {
                                                     $has_data = true;
-                                                    $current_published = (int)($row['current_published'] ?? 0);
-                                                    $current_granted = (int)($row['current_granted'] ?? 0);
-                                            ?>
-                                            <tr>
-                                                <td>Total</td>
-                                                <td><?php echo $current_published; ?></td>
-                                                <td><?php echo $current_granted; ?></td>
-                                            </tr>
-                                            <?php
+                                                    $current_published = (int) ($row['current_published'] ?? 0);
+                                                    $current_granted = (int) ($row['current_granted'] ?? 0);
+                                                    ?>
+                                                    <tr>
+                                                        <td>Total</td>
+                                                        <td><?php echo $current_published; ?></td>
+                                                        <td><?php echo $current_granted; ?></td>
+                                                    </tr>
+                                                    <?php
                                                 }
                                                 mysqli_free_result($result);
                                             }
                                         }
                                         mysqli_stmt_close($stmt);
                                     }
-                                    
+
                                     if (!$has_data) {
                                         echo '<tr><td colspan="3">No patent data found for the selected academic year.</td></tr>';
                                     }
@@ -791,8 +825,10 @@ GROUP BY p.A_YEAR, p.programme_type";
                         <h4><i></i>VII. Sponsored Research</h4>
                         <div style="border: 1px solid #dee2e6; border-radius: 4px;">
                             <div style="max-height: 450px; overflow-y: auto; overflow-x: auto;">
-                                <table class="table table-bordered table-striped mb-0" id="collegetable" style="width:100%; margin-bottom: 0;">
-                                    <thead class="table-light" style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
+                                <table class="table table-bordered table-striped mb-0" id="collegetable"
+                                    style="width:100%; margin-bottom: 0;">
+                                    <thead class="table-light"
+                                        style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
                                         <tr>
                                             <th>Sr. No</th>
                                             <th>Department Name</th>
@@ -823,13 +859,13 @@ GROUP BY p.A_YEAR, p.programme_type";
                                         WHERE fo.A_YEAR = ?
                                         AND (dm.DEPT_COLL_NO IS NULL OR dm.DEPT_COLL_NO NOT IN (9998, 9999956, 99999, 9997, 9995))
                                         ORDER BY dm.DEPT_NAME";
-                                        
+
                                         $stmt = mysqli_prepare($conn, $sponsored_query);
                                         if ($stmt) {
                                             mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
                                             mysqli_stmt_execute($stmt);
                                             $sponsored_result = mysqli_stmt_get_result($stmt);
-                                            
+
                                             $sr_no = 0;
                                             $has_data = false;
                                             // Initialize totals
@@ -838,7 +874,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                             $grand_total_amount_agencies = 0.0; // Use double precision
                                             $grand_total_industries = 0;
                                             $grand_total_amount_industries = 0.0; // Use double precision
-                                            
+                                        
                                             if ($sponsored_result && mysqli_num_rows($sponsored_result) > 0) {
                                                 while ($row = mysqli_fetch_assoc($sponsored_result)) {
                                                     // Initialize counters
@@ -847,7 +883,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                     $dept_amount_agencies = 0.0; // Use double precision
                                                     $dept_industries = 0;
                                                     $dept_amount_industries = 0.0; // Use double precision
-                                                    
+                                        
                                                     // Prefer JSON projects field if it exists
                                                     if (!empty($row['projects'])) {
                                                         $projects_json = $row['projects'];
@@ -858,12 +894,12 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                                     continue;
                                                                 }
                                                                 $type = trim($project['type'] ?? '');
-                                                                $amount = (double)($project['amount'] ?? 0.0);
-                                                                
+                                                                $amount = (double) ($project['amount'] ?? 0.0);
+
                                                                 if ($amount > 0 && $amount < 1000) {
-                                                                    $amount = (double)($amount * 100000.0);
+                                                                    $amount = (double) ($amount * 100000.0);
                                                                 }
-                                                                
+
                                                                 if ($type === 'Govt-Sponsored') {
                                                                     $dept_agencies++;
                                                                     $dept_amount_agencies += $amount;
@@ -876,23 +912,23 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                             }
                                                         }
                                                     }
-                                                    
+
                                                     // Fallback to summary fields
                                                     if ($dept_total == 0) {
-                                                        $dept_total = (int)($row['sponsored_projects_total'] ?? 0);
-                                                        $dept_agencies = (int)($row['sponsored_projects_agencies'] ?? 0);
-                                                        $dept_amount_agencies = (double)($row['sponsored_amount_agencies'] ?? 0.0);
-                                                        $dept_industries = (int)($row['sponsored_projects_industries'] ?? 0);
-                                                        $dept_amount_industries = (double)($row['sponsored_amount_industries'] ?? 0.0);
+                                                        $dept_total = (int) ($row['sponsored_projects_total'] ?? 0);
+                                                        $dept_agencies = (int) ($row['sponsored_projects_agencies'] ?? 0);
+                                                        $dept_amount_agencies = (double) ($row['sponsored_amount_agencies'] ?? 0.0);
+                                                        $dept_industries = (int) ($row['sponsored_projects_industries'] ?? 0);
+                                                        $dept_amount_industries = (double) ($row['sponsored_amount_industries'] ?? 0.0);
                                                     }
-                                                    
+
                                                     // Only show rows with data
                                                     if ($dept_total > 0 || $dept_amount_agencies > 0 || $dept_amount_industries > 0) {
                                                         $has_data = true;
                                                         $sr_no++;
                                                         $total_amount = $dept_amount_agencies + $dept_amount_industries;
                                                         $dept_name = htmlspecialchars($row['DEPT_NAME'] ?? 'Unknown Department', ENT_QUOTES, 'UTF-8');
-                                                        
+
                                                         // Add to grand totals
                                                         $grand_total_projects += $dept_total;
                                                         $grand_total_agencies += $dept_agencies;
@@ -913,7 +949,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                         <?php
                                                     }
                                                 }
-                                                
+
                                                 if (!$has_data) {
                                                     echo '<tr><td colspan="8">No sponsored research data found for the selected academic year.</td></tr>';
                                                 }
@@ -933,16 +969,25 @@ GROUP BY p.A_YEAR, p.programme_type";
                             if (isset($has_data) && $has_data) {
                                 $grand_total_amount = $grand_total_amount_agencies + $grand_total_amount_industries;
                                 ?>
-                                <table class="table table-bordered mb-0" style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
                                     <tfoot>
                                         <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
                                             <td colspan="2" class="text-end"><strong>TOTAL</strong></td>
-                                            <td class="text-center"><strong>Projects (Agencies): <?php echo $grand_total_agencies; ?></strong></td>
-                                            <td class="text-center"><strong>Amount: <?php echo number_format($grand_total_amount_agencies, 2); ?></strong></td>
-                                            <td class="text-center"><strong>Projects (Industries): <?php echo $grand_total_industries; ?></strong></td>
-                                            <td class="text-center"><strong>Amount: <?php echo number_format($grand_total_amount_industries, 2); ?></strong></td>
-                                            <td class="text-center"><strong>Total Projects: <?php echo $grand_total_projects; ?></strong></td>
-                                            <td class="text-center"><strong>Total Amount: <?php echo number_format($grand_total_amount, 2); ?></strong></td>
+                                            <td class="text-center"><strong>Projects (Agencies):
+                                                    <?php echo $grand_total_agencies; ?></strong></td>
+                                            <td class="text-center"><strong>Amount:
+                                                    <?php echo number_format($grand_total_amount_agencies, 2); ?></strong>
+                                            </td>
+                                            <td class="text-center"><strong>Projects (Industries):
+                                                    <?php echo $grand_total_industries; ?></strong></td>
+                                            <td class="text-center"><strong>Amount:
+                                                    <?php echo number_format($grand_total_amount_industries, 2); ?></strong>
+                                            </td>
+                                            <td class="text-center"><strong>Total Projects:
+                                                    <?php echo $grand_total_projects; ?></strong></td>
+                                            <td class="text-center"><strong>Total Amount:
+                                                    <?php echo number_format($grand_total_amount, 2); ?></strong></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -955,8 +1000,10 @@ GROUP BY p.A_YEAR, p.programme_type";
                         <h4><i></i>VIII. Consultancy Project Details</h4>
                         <div style="border: 1px solid #dee2e6; border-radius: 4px;">
                             <div style="max-height: 450px; overflow-y: auto; overflow-x: auto;">
-                                <table class="table table-bordered table-striped mb-0" id="collegetable" style="width:100%; margin-bottom: 0;">
-                                    <thead class="table-light" style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
+                                <table class="table table-bordered table-striped mb-0" id="collegetable"
+                                    style="width:100%; margin-bottom: 0;">
+                                    <thead class="table-light"
+                                        style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
                                         <tr>
                                             <th>Sr. No</th>
                                             <th>Department Name</th>
@@ -981,18 +1028,18 @@ GROUP BY p.A_YEAR, p.programme_type";
                                         WHERE cp.A_YEAR = ?
                                         AND (dm.DEPT_COLL_NO IS NULL OR dm.DEPT_COLL_NO NOT IN (9998, 9999956, 99999, 9997, 9995))
                                         ORDER BY dm.DEPT_NAME";
-                                        
+
                                         $stmt = mysqli_prepare($conn, $consultancy_query);
                                         if ($stmt) {
                                             mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
                                             mysqli_stmt_execute($stmt);
                                             $consultancy_result = mysqli_stmt_get_result($stmt);
-                                            
+
                                             $consultancy_data = [];
-                                            
+
                                             if ($consultancy_result && mysqli_num_rows($consultancy_result) > 0) {
                                                 while ($row = mysqli_fetch_assoc($consultancy_result)) {
-                                                    $dept_id = (int)($row['DEPT_ID'] ?? 0);
+                                                    $dept_id = (int) ($row['DEPT_ID'] ?? 0);
                                                     if (!isset($consultancy_data[$dept_id])) {
                                                         $consultancy_data[$dept_id] = [
                                                             'dept_name' => $row['DEPT_NAME'] ?? 'Unknown Department',
@@ -1001,14 +1048,14 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                             'amount' => 0.0
                                                         ];
                                                     }
-                                                    $consultancy_data[$dept_id]['projects'] += (int)($row['TOTAL_NO_OF_CP'] ?? 0);
-                                                    $consultancy_data[$dept_id]['clients'] += (int)($row['TOTAL_NO_OF_CLIENT'] ?? 0);
-                                                    $consultancy_data[$dept_id]['amount'] += (double)($row['TOTAL_AMT_RECEIVED'] ?? 0.0);
+                                                    $consultancy_data[$dept_id]['projects'] += (int) ($row['TOTAL_NO_OF_CP'] ?? 0);
+                                                    $consultancy_data[$dept_id]['clients'] += (int) ($row['TOTAL_NO_OF_CLIENT'] ?? 0);
+                                                    $consultancy_data[$dept_id]['amount'] += (double) ($row['TOTAL_AMT_RECEIVED'] ?? 0.0);
                                                 }
                                                 mysqli_free_result($consultancy_result);
                                             }
                                             mysqli_stmt_close($stmt);
-                                            
+
                                             // Also check faculty_output.projects JSON for Consultancy type projects
                                             $consultancy_json_query = "SELECT 
                                                 fo.DEPT_ID,
@@ -1024,10 +1071,10 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                 mysqli_stmt_bind_param($stmt_json, 's', $A_YEAR);
                                                 mysqli_stmt_execute($stmt_json);
                                                 $json_result = mysqli_stmt_get_result($stmt_json);
-                                                
+
                                                 if ($json_result && mysqli_num_rows($json_result) > 0) {
                                                     while ($row_json = mysqli_fetch_assoc($json_result)) {
-                                                        $dept_id = (int)($row_json['DEPT_ID'] ?? 0);
+                                                        $dept_id = (int) ($row_json['DEPT_ID'] ?? 0);
                                                         $projects_data = json_decode($row_json['projects'], true);
                                                         if (is_array($projects_data)) {
                                                             if (!isset($consultancy_data[$dept_id])) {
@@ -1047,9 +1094,9 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                                     if (!empty($agency) && !in_array($agency, $unique_clients)) {
                                                                         $unique_clients[] = $agency;
                                                                     }
-                                                                    $amount = (double)($project['amount'] ?? 0.0);
+                                                                    $amount = (double) ($project['amount'] ?? 0.0);
                                                                     if ($amount > 0 && $amount < 1000) {
-                                                                        $amount = (double)($amount * 100000.0);
+                                                                        $amount = (double) ($amount * 100000.0);
                                                                     }
                                                                     $consultancy_data[$dept_id]['amount'] += $amount;
                                                                 }
@@ -1061,20 +1108,20 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                 }
                                                 mysqli_stmt_close($stmt_json);
                                             }
-                                            
+
                                             $sr_no = 0;
                                             $has_data = false;
                                             // Initialize grand totals
                                             $grand_total_projects = 0;
                                             $grand_total_clients = 0;
                                             $grand_total_amount = 0.0; // Use double precision
-                                            
+                                        
                                             foreach ($consultancy_data as $dept_id => $data) {
                                                 if ($data['projects'] > 0 || $data['amount'] > 0) {
                                                     $has_data = true;
                                                     $sr_no++;
                                                     $dept_name = htmlspecialchars($data['dept_name'], ENT_QUOTES, 'UTF-8');
-                                                    
+
                                                     // Add to grand totals
                                                     $grand_total_projects += $data['projects'];
                                                     $grand_total_clients += $data['clients'];
@@ -1090,7 +1137,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                     <?php
                                                 }
                                             }
-                                            
+
                                             if (!$has_data) {
                                                 echo '<tr><td colspan="5">No consultancy project data found for the selected academic year.</td></tr>';
                                             }
@@ -1104,13 +1151,17 @@ GROUP BY p.A_YEAR, p.programme_type";
                             <?php
                             if (isset($has_data) && $has_data) {
                                 ?>
-                                <table class="table table-bordered mb-0" style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
                                     <tfoot>
                                         <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
                                             <td colspan="2" class="text-end"><strong>TOTAL</strong></td>
-                                            <td class="text-center"><strong>Total Projects: <?php echo $grand_total_projects; ?></strong></td>
-                                            <td class="text-center"><strong>Total Clients: <?php echo $grand_total_clients; ?></strong></td>
-                                            <td class="text-center"><strong>Total Amount: <?php echo number_format($grand_total_amount, 2); ?></strong></td>
+                                            <td class="text-center"><strong>Total Projects:
+                                                    <?php echo $grand_total_projects; ?></strong></td>
+                                            <td class="text-center"><strong>Total Clients:
+                                                    <?php echo $grand_total_clients; ?></strong></td>
+                                            <td class="text-center"><strong>Total Amount:
+                                                    <?php echo number_format($grand_total_amount, 2); ?></strong></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -1137,7 +1188,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                     if (!isset($conn) || !$conn) {
                                         require_once(__DIR__ . '/../config.php');
                                     }
-                                    
+
                                     // CRITICAL: Use prepared statements for security
                                     // NOTE: Some departments store TOTAL_INCOME in lakhs (e.g., 1.5 for ₹1.5 Lakhs)
                                     // while others store it in rupees. We need to handle both cases.
@@ -1165,41 +1216,41 @@ GROUP BY p.A_YEAR, p.programme_type";
                                     AND ed.DEPT_ID NOT IN (119, 120, 122, 136)
                                     AND (dm.DEPT_COLL_NO IS NULL OR dm.DEPT_COLL_NO NOT IN (9998, 9999956, 99999, 9997, 9995))
                                     GROUP BY ed.A_YEAR";
-                                    
+
                                     $stmt = mysqli_prepare($conn, $exec_query);
                                     $grand_total_programs = 0;
                                     $grand_total_participants = 0;
                                     $grand_total_income_rupees = 0.0; // Use double precision
                                     $has_data = false;
-                                    
+
                                     if ($stmt) {
                                         mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
                                         if (mysqli_stmt_execute($stmt)) {
                                             $exec_result = mysqli_stmt_get_result($stmt);
-                                            
+
                                             if ($exec_result && mysqli_num_rows($exec_result) > 0) {
                                                 while ($row = mysqli_fetch_assoc($exec_result)) {
                                                     $has_data = true;
-                                                    $grand_total_programs = (int)($row['total_programs'] ?? 0);
-                                                    $grand_total_participants = (int)($row['total_participants'] ?? 0);
-                                                    $grand_total_income_rupees = (double)($row['total_income_rupees'] ?? 0.0); // Use double for precision
+                                                    $grand_total_programs = (int) ($row['total_programs'] ?? 0);
+                                                    $grand_total_participants = (int) ($row['total_participants'] ?? 0);
+                                                    $grand_total_income_rupees = (double) ($row['total_income_rupees'] ?? 0.0); // Use double for precision
                                                 }
-                                                
+
                                                 // Display aggregated row
                                                 $academic_year = htmlspecialchars($A_YEAR, ENT_QUOTES, 'UTF-8');
-                                            ?>
-                                            <tr>
+                                                ?>
+                                                <tr>
                                                     <td><?php echo $academic_year; ?></td>
                                                     <td><?php echo $grand_total_programs; ?></td>
                                                     <td><?php echo $grand_total_participants; ?></td>
                                                     <td><?php echo number_format($grand_total_income_rupees, 2); ?></td>
-                                            </tr>
-                                            <?php
+                                                </tr>
+                                                <?php
                                                 mysqli_free_result($exec_result);
                                             } else {
                                                 echo '<tr><td colspan="4">No executive development program data found for the selected academic year.</td></tr>';
-                                        }
-                                    } else {
+                                            }
+                                        } else {
                                             echo '<tr><td colspan="4">Database query execution error. Please try again.</td></tr>';
                                         }
                                         mysqli_stmt_close($stmt);
@@ -1212,17 +1263,21 @@ GROUP BY p.A_YEAR, p.programme_type";
                             <?php
                             if (isset($has_data) && $has_data) {
                                 // Calculate total in lakhs using double precision
-                                $grand_total_income_lakhs = (double)($grand_total_income_rupees / 100000);
+                                $grand_total_income_lakhs = (double) ($grand_total_income_rupees / 100000);
                                 ?>
-                                <table class="table table-bordered mb-0" style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
                                     <tfoot>
                                         <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
                                             <td class="text-end"><strong>TOTAL</strong></td>
-                                            <td class="text-center"><strong>Total Programs: <?php echo $grand_total_programs; ?></strong></td>
-                                            <td class="text-center"><strong>Total Participants: <?php echo $grand_total_participants; ?></strong></td>
+                                            <td class="text-center"><strong>Total Programs:
+                                                    <?php echo $grand_total_programs; ?></strong></td>
+                                            <td class="text-center"><strong>Total Participants:
+                                                    <?php echo $grand_total_participants; ?></strong></td>
                                             <td class="text-center">
                                                 <strong>
-                                                    Total Amount: ₹<?php echo number_format($grand_total_income_rupees, 2); ?> 
+                                                    Total Amount:
+                                                    ₹<?php echo number_format($grand_total_income_rupees, 2); ?>
                                                     (<?php echo number_format($grand_total_income_lakhs, 4); ?> Lakhs)
                                                 </strong>
                                             </td>
@@ -1238,8 +1293,10 @@ GROUP BY p.A_YEAR, p.programme_type";
                         <h4><i></i>X. Online Education</h4>
                         <div style="border: 1px solid #dee2e6; border-radius: 4px;">
                             <div style="max-height: 450px; overflow-y: auto; overflow-x: auto;">
-                                <table class="table table-bordered table-striped mb-0" id="collegetable" style="width:100%; margin-bottom: 0;">
-                                    <thead class="table-light" style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
+                                <table class="table table-bordered table-striped mb-0" id="collegetable"
+                                    style="width:100%; margin-bottom: 0;">
+                                    <thead class="table-light"
+                                        style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
                                         <tr>
                                             <th>Sr. No</th>
                                             <th>Department Name</th>
@@ -1254,8 +1311,8 @@ GROUP BY p.A_YEAR, p.programme_type";
                                         // CRITICAL: Use prepared statements for security
                                         // Online education data is stored in nepmarks.mooc_data JSON field
                                         // nepmarks.A_YEAR is INT (stores year like 2024), not VARCHAR
-                                        $year_start = (int)explode('-', $A_YEAR)[0];
-                                        
+                                        $year_start = (int) explode('-', $A_YEAR)[0];
+
                                         // Query nepmarks table for mooc_data JSON field with department info
                                         $online_query = "SELECT 
                                             nm.mooc_data,
@@ -1267,34 +1324,34 @@ GROUP BY p.A_YEAR, p.programme_type";
                                         AND (dm.DEPT_COLL_NO IS NULL OR dm.DEPT_COLL_NO NOT IN (9998, 9999956, 99999, 9997, 9995))
                                         AND (nm.mooc_data IS NOT NULL AND nm.mooc_data != '' AND nm.mooc_data != '[]')
                                         ORDER BY dm.DEPT_NAME";
-                                        
+
                                         $stmt = mysqli_prepare($conn, $online_query);
                                         if ($stmt) {
                                             mysqli_stmt_bind_param($stmt, 'i', $year_start);
                                             mysqli_stmt_execute($stmt);
                                             $online_result = mysqli_stmt_get_result($stmt);
-                                            
+
                                             $sr_no = 0;
                                             $has_data = false;
                                             // Initialize grand totals
                                             $grand_total_students = 0;
                                             $grand_total_courses = 0;
                                             $grand_total_credits = 0;
-                                            
+
                                             if ($online_result && mysqli_num_rows($online_result) > 0) {
                                                 while ($row = mysqli_fetch_assoc($online_result)) {
                                                     if (!empty($row['mooc_data'])) {
                                                         $mooc_data = json_decode($row['mooc_data'], true);
                                                         $dept_name = htmlspecialchars($row['DEPT_NAME'] ?? 'Unknown Department', ENT_QUOTES, 'UTF-8');
-                                                        
+
                                                         if (is_array($mooc_data) && count($mooc_data) > 0) {
                                                             foreach ($mooc_data as $mooc) {
                                                                 if (is_array($mooc)) {
-                                                                    $students = (int)($mooc['students'] ?? 0);
-                                                                    $credits = (int)($mooc['credits'] ?? 0);
+                                                                    $students = (int) ($mooc['students'] ?? 0);
+                                                                    $credits = (int) ($mooc['credits'] ?? 0);
                                                                     $platform = trim($mooc['platform'] ?? '');
                                                                     $title = trim($mooc['title'] ?? '');
-                                                                    
+
                                                                     // Show entry if it has any data
                                                                     if (!empty($platform) || !empty($title) || $students > 0 || $credits > 0) {
                                                                         $has_data = true;
@@ -1306,8 +1363,10 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                                         <tr>
                                                                             <td><?php echo $sr_no; ?></td>
                                                                             <td><?php echo $dept_name; ?></td>
-                                                                            <td><?php echo htmlspecialchars($title ?: 'N/A', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                                            <td><?php echo htmlspecialchars($platform ?: 'N/A', ENT_QUOTES, 'UTF-8'); ?></td>
+                                                                            <td><?php echo htmlspecialchars($title ?: 'N/A', ENT_QUOTES, 'UTF-8'); ?>
+                                                                            </td>
+                                                                            <td><?php echo htmlspecialchars($platform ?: 'N/A', ENT_QUOTES, 'UTF-8'); ?>
+                                                                            </td>
                                                                             <td><?php echo $students; ?></td>
                                                                             <td><?php echo $credits; ?></td>
                                                                         </tr>
@@ -1319,7 +1378,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                     }
                                                 }
                                                 mysqli_free_result($online_result);
-                                                
+
                                                 if (!$has_data) {
                                                     echo '<tr><td colspan="6">No online education data found for the selected academic year.</td></tr>';
                                                 }
@@ -1337,14 +1396,18 @@ GROUP BY p.A_YEAR, p.programme_type";
                             <?php
                             if (isset($has_data) && $has_data) {
                                 ?>
-                                <table class="table table-bordered mb-0" style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
                                     <tfoot>
                                         <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
                                             <td colspan="2" class="text-end"><strong>TOTAL</strong></td>
-                                            <td class="text-center"><strong>Total Courses: <?php echo $grand_total_courses; ?></strong></td>
+                                            <td class="text-center"><strong>Total Courses:
+                                                    <?php echo $grand_total_courses; ?></strong></td>
                                             <td class="text-center">-</td>
-                                            <td class="text-center"><strong>Total Students: <?php echo $grand_total_students; ?></strong></td>
-                                            <td class="text-center"><strong>Total Credits: <?php echo $grand_total_credits; ?></strong></td>
+                                            <td class="text-center"><strong>Total Students:
+                                                    <?php echo $grand_total_students; ?></strong></td>
+                                            <td class="text-center"><strong>Total Credits:
+                                                    <?php echo $grand_total_credits; ?></strong></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -1352,14 +1415,19 @@ GROUP BY p.A_YEAR, p.programme_type";
                             }
                             ?>
                         </div>
-                        </div>
+                    </div>
                     <div class="section-header">
-                        <h4><i></i>XI. Faculty Details</h4>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="m-0"><i></i>XI. Faculty Details</h4>
+                            <a href="export_nirf_excel.php?type=faculty" class="btn btn-sm btn-success"><i class="fas fa-file-excel"></i> Download Excel</a>
+                        </div>
                         <div style="border: 1px solid #dee2e6; border-radius: 4px;">
                             <div style="max-height: 450px; overflow-y: auto; overflow-x: auto;">
-                                <table class="table table-bordered table-striped mb-0" id="collegetable" style="width:100%; margin-bottom: 0;">
-                                    <thead class="table-light" style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
-                                    <tr>
+                                <table class="table table-bordered table-striped mb-0" id="collegetable"
+                                    style="width:100%; margin-bottom: 0;">
+                                    <thead class="table-light"
+                                        style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
+                                        <tr>
                                             <th>Sr. No</th>
                                             <th>Department Name</th>
                                             <th>Faculty Name</th>
@@ -1378,15 +1446,15 @@ GROUP BY p.A_YEAR, p.programme_type";
                                             <th>Association Type</th>
                                             <th>Email ID</th>
                                             <th>Mobile Number</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php
                                         // Check connection before use
                                         if (!isset($conn) || !$conn) {
                                             require_once(__DIR__ . '/../config.php');
                                         }
-                                        
+
                                         // Use prepared statement for security
                                         // CRITICAL: Use DISTINCT or GROUP BY to prevent duplicate faculty records
                                         // Some departments may have duplicate entries, so we need to ensure unique counting
@@ -1415,7 +1483,7 @@ GROUP BY p.A_YEAR, p.programme_type";
                                         WHERE a.A_YEAR = ?
                                         AND (b.DEPT_COLL_NO IS NULL OR b.DEPT_COLL_NO NOT IN (9998, 9999956, 99999, 9997, 9995))
                                         ORDER BY b.DEPT_NAME, a.FACULTY_NAME";
-                                        
+
                                         $stmt = mysqli_prepare($conn, $faculty_query);
                                         if ($stmt) {
                                             mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
@@ -1425,12 +1493,12 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                     $sr_no = 0;
                                                     $has_data = false;
                                                     $grand_total_faculty = 0;
-                                                    
+
                                                     while ($row = mysqli_fetch_assoc($faculty_result)) {
                                                         $has_data = true;
                                                         $sr_no++;
                                                         $grand_total_faculty++;
-                                                        
+
                                                         // Escape all output to prevent XSS
                                                         $dept_name = htmlspecialchars($row['DEPT_NAME'] ?? '', ENT_QUOTES, 'UTF-8');
                                                         $faculty_name = htmlspecialchars($row['FACULTY_NAME'] ?? '', ENT_QUOTES, 'UTF-8');
@@ -1449,8 +1517,8 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                         $assoc_type = htmlspecialchars($row['ASSOC_TYPE'] ?? '', ENT_QUOTES, 'UTF-8');
                                                         $email = htmlspecialchars($row['EMAIL_ID'] ?? '', ENT_QUOTES, 'UTF-8');
                                                         $mobile = htmlspecialchars($row['MOBILE_NUM'] ?? '', ENT_QUOTES, 'UTF-8');
-                                            ?>
-                                            <tr>
+                                                        ?>
+                                                        <tr>
                                                             <td><?php echo $sr_no; ?></td>
                                                             <td><?php echo $dept_name; ?></td>
                                                             <td><?php echo $faculty_name; ?></td>
@@ -1469,16 +1537,16 @@ GROUP BY p.A_YEAR, p.programme_type";
                                                             <td><?php echo $assoc_type; ?></td>
                                                             <td><?php echo $email; ?></td>
                                                             <td><?php echo $mobile; ?></td>
-                                            </tr>
-                                            <?php
-                                        }
-                                                    
+                                                        </tr>
+                                                        <?php
+                                                    }
+
                                                     if (!$has_data) {
                                                         echo '<tr><td colspan="18">No faculty data found for the selected academic year.</td></tr>';
                                                     }
-                                                    
+
                                                     mysqli_free_result($faculty_result);
-                                    } else {
+                                                } else {
                                                     echo '<tr><td colspan="18">Database query error. Please try again.</td></tr>';
                                                 }
                                             } else {
@@ -1487,19 +1555,21 @@ GROUP BY p.A_YEAR, p.programme_type";
                                             mysqli_stmt_close($stmt);
                                         } else {
                                             echo '<tr><td colspan="18">Database query preparation error. Please try again.</td></tr>';
-                                    }
-                                    ?>
-                                </tbody>
-                            </table>
+                                        }
+                                        ?>
+                                    </tbody>
+                                </table>
                             </div>
                             <?php
                             if (isset($has_data) && $has_data && isset($grand_total_faculty)) {
                                 ?>
-                                <table class="table table-bordered mb-0" style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
                                     <tfoot>
                                         <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
                                             <td colspan="2" class="text-end"><strong>TOTAL</strong></td>
-                                            <td colspan="16" class="text-center"><strong>Total Faculty: <?php echo $grand_total_faculty; ?></strong></td>
+                                            <td colspan="16" class="text-center"><strong>Total Faculty:
+                                                    <?php echo $grand_total_faculty; ?></strong></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -1510,13 +1580,18 @@ GROUP BY p.A_YEAR, p.programme_type";
                     </div>
 
                     <div class="section-header">
-                        <h4><i></i>XII. Acadamic Peers</h4>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="m-0"><i></i>XII. Acadamic Peers</h4>
+                            <a href="export_nirf_excel.php?type=peers" class="btn btn-sm btn-success"><i class="fas fa-file-excel"></i> Download Excel</a>
+                        </div>
                         <div style="border: 1px solid #dee2e6; border-radius: 4px;">
                             <div style="max-height: 450px; overflow-y: auto; overflow-x: auto;">
-                                <table class="table table-bordered table-striped mb-0" id="collegetable" style="width:100%; margin-bottom: 0;">
-                                    <thead class="table-light" style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
+                                <table class="table table-bordered table-striped mb-0" id="collegetable"
+                                    style="width:100%; margin-bottom: 0;">
+                                    <thead class="table-light"
+                                        style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
                                         <tr>
-                                            <th>SOURCE</th>                                       
+                                            <th>SOURCE</th>
                                             <th>TITLE</th>
                                             <th>FIRST_NAME</th>
                                             <th>LAST_NAME</th>
@@ -1527,78 +1602,196 @@ GROUP BY p.A_YEAR, p.programme_type";
                                             <th>COUNTRY</th>
                                             <th>EMAIL</th>
                                             <th>PHONE</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php
-                                    // Check connection before use
-                                    if (!isset($conn) || !$conn) {
-                                        require_once(__DIR__ . '/../config.php');
-                                    }
-                                    
-                                    // Use prepared statement and exclude test departments
-                                    $query = "SELECT ap.SOURCE, ap.TITLE, ap.FIRST_NAME, ap.LAST_NAME, ap.JOB_TITLE, ap.DEPARTMENT, ap.INSTITUTION, ap.COUNTRY, ap.EMAIL, ap.SUBJECT, ap.PHONE
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php
+                                        // Check connection before use
+                                        if (!isset($conn) || !$conn) {
+                                            require_once(__DIR__ . '/../config.php');
+                                        }
+
+                                        // Use prepared statement and exclude test departments
+                                        $query = "SELECT ap.SOURCE, ap.TITLE, ap.FIRST_NAME, ap.LAST_NAME, ap.JOB_TITLE, ap.DEPARTMENT, ap.INSTITUTION, ap.COUNTRY, ap.EMAIL, ap.SUBJECT, ap.PHONE
                                      FROM academic_peers ap
                                      LEFT JOIN department_master dm ON dm.DEPT_ID = ap.DEPT_ID
                                      WHERE ap.A_YEAR = ?
                                      AND (dm.DEPT_COLL_NO IS NULL OR dm.DEPT_COLL_NO NOT IN (9998, 9999956, 99999, 9997, 9995))
                                      ORDER BY ap.SOURCE, ap.FIRST_NAME, ap.LAST_NAME";
-                                    $stmt = mysqli_prepare($conn, $query);
-                                    $grand_total_peers = 0;
-                                    $has_data = false;
-                                    
-                                    if ($stmt) {
-                                        mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
-                                        if (mysqli_stmt_execute($stmt)) {
-                                            $result = mysqli_stmt_get_result($stmt);
-                                    if ($result) {
-                                        while ($row = mysqli_fetch_assoc($result)) {
-                                                    $has_data = true;
-                                                    $grand_total_peers++;
-                                            ?>
-                                            <tr>
-                                                        <td><?php echo htmlspecialchars($row['SOURCE'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['TITLE'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['FIRST_NAME'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['LAST_NAME'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['JOB_TITLE'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['DEPARTMENT'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['SUBJECT'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['INSTITUTION'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['COUNTRY'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['EMAIL'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                                        <td><?php echo htmlspecialchars($row['PHONE'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
-                                            </tr>
-                                            <?php
-                                        }
-                                                mysqli_free_result($result);
+                                        $stmt = mysqli_prepare($conn, $query);
+                                        $grand_total_peers = 0;
+                                        $has_data = false;
+
+                                        if ($stmt) {
+                                            mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
+                                            if (mysqli_stmt_execute($stmt)) {
+                                                $result = mysqli_stmt_get_result($stmt);
+                                                if ($result) {
+                                                    while ($row = mysqli_fetch_assoc($result)) {
+                                                        $has_data = true;
+                                                        $grand_total_peers++;
+                                                        ?>
+                                                        <tr>
+                                                            <td><?php echo htmlspecialchars($row['SOURCE'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['TITLE'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['FIRST_NAME'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['LAST_NAME'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['JOB_TITLE'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['DEPARTMENT'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['SUBJECT'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['INSTITUTION'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['COUNTRY'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['EMAIL'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['PHONE'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                        </tr>
+                                                        <?php
+                                                    }
+                                                    mysqli_free_result($result);
+                                                }
                                             }
+                                            mysqli_stmt_close($stmt);
                                         }
-                                        mysqli_stmt_close($stmt);
-                                    }
-                                    
-                                    if (!$has_data) {
-                                        echo '<tr><td colspan="11">No academic peers data found for the selected academic year.</td></tr>';
-                                    }
-                                    ?>
-                                </tbody>
-                            </table>
+
+                                        if (!$has_data) {
+                                            echo '<tr><td colspan="11">No academic peers data found for the selected academic year.</td></tr>';
+                                        }
+                                        ?>
+                                    </tbody>
+                                </table>
                             </div>
                             <?php
                             if (isset($has_data) && $has_data) {
                                 ?>
-                                <table class="table table-bordered mb-0" style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
                                     <tfoot>
                                         <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
-                                            <td colspan="11" class="text-center"><strong>TOTAL Academic Peers: <?php echo $grand_total_peers; ?></strong></td>
+                                            <td colspan="11" class="text-center"><strong>TOTAL Academic Peers:
+                                                    <?php echo $grand_total_peers; ?></strong></td>
                                         </tr>
                                     </tfoot>
                                 </table>
                                 <?php
                             }
                             ?>
-                        </div> 
+                        </div>
                     </div>
+
+                    <div class="section-header">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h4 class="m-0"><i></i>XII (B). Employer Details</h4>
+                            <a href="export_nirf_excel.php?type=employers" class="btn btn-sm btn-success"><i class="fas fa-file-excel"></i> Download Excel</a>
+                        </div>
+                        <div style="border: 1px solid #dee2e6; border-radius: 4px;">
+                            <div style="max-height: 450px; overflow-y: auto; overflow-x: auto;">
+                                <table class="table table-bordered table-striped mb-0" id="employertable"
+                                    style="width:100%; margin-bottom: 0;">
+                                    <thead class="table-light"
+                                        style="position: sticky; top: 0; z-index: 10; background-color: #f8f9fa;">
+                                        <tr>
+                                            <th>FIRST_NAME</th>
+                                            <th>LAST_NAME</th>
+                                            <th>DESIGNATION</th>
+                                            <th>TYPE_OF_INDUSTRY</th>
+                                            <th>COMPANY</th>
+                                            <th>COUNTRY</th>
+                                            <th>EMAIL</th>
+                                            <th>PHONE</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php
+                                        // Check connection before use
+                                        if (!isset($conn) || !$conn) {
+                                            require_once(__DIR__ . '/../config.php');
+                                        }
+
+                                        // Employer query (same filter logic)
+                                        $query = "SELECT e.FIRST_NAME, e.LAST_NAME, e.DESIGNATION, e.TYPE_OF_INDUSTRY, e.COMPANY, 
+                                     e.TYPE_INDIAN_FOREIGN, e.EMAIL_ID, e.PHONE
+                              FROM employers_details e
+                              LEFT JOIN department_master dm ON dm.DEPT_ID = e.DEPT_ID
+                              WHERE e.A_YEAR = ?
+                              AND e.DEPT_ID NOT IN (119,120,122,136,135)
+                              ORDER BY e.FIRST_NAME, e.LAST_NAME";
+
+                                        $stmt = mysqli_prepare($conn, $query);
+                                        $grand_total_employers = 0;
+                                        $has_employer_data = false;
+
+                                        if ($stmt) {
+                                            mysqli_stmt_bind_param($stmt, 's', $A_YEAR);
+                                            if (mysqli_stmt_execute($stmt)) {
+                                                $result = mysqli_stmt_get_result($stmt);
+                                                if ($result) {
+                                                    while ($row = mysqli_fetch_assoc($result)) {
+                                                        $has_employer_data = true;
+                                                        $grand_total_employers++;
+                                                        ?>
+                                                        <tr>
+                                                            <td><?php echo htmlspecialchars($row['FIRST_NAME'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['LAST_NAME'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['DESIGNATION'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['TYPE_OF_INDUSTRY'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['COMPANY'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['TYPE_INDIAN_FOREIGN'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['EMAIL_ID'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                            <td><?php echo htmlspecialchars($row['PHONE'] ?? '', ENT_QUOTES, 'UTF-8'); ?>
+                                                            </td>
+                                                        </tr>
+                                                        <?php
+                                                    }
+                                                    mysqli_free_result($result);
+                                                }
+                                            }
+                                            mysqli_stmt_close($stmt);
+                                        }
+
+                                        if (!$has_employer_data) {
+                                            echo '<tr><td colspan="8">No employer data found for the selected academic year.</td></tr>';
+                                        }
+                                        ?>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <?php
+                            if (isset($has_employer_data) && $has_employer_data) {
+                                ?>
+                                <table class="table table-bordered mb-0"
+                                    style="width:100%; margin-top: 0; border-top: 2px solid #0dcaf0;">
+                                    <tfoot>
+                                        <tr class="table-info fw-bold" style="background-color: #d1ecf1;">
+                                            <td colspan="8" class="text-center">
+                                                <strong>TOTAL Employer Peers: <?php echo $grand_total_employers; ?></strong>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                                <?php
+                            }
+                            ?>
+                        </div>
+                    </div>
+
 
                 </div>
             </div>

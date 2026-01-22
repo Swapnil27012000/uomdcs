@@ -42,6 +42,9 @@ $deptCollNo   = $dept['DEPT_COLL_NO'];
 $deptCollName = $dept['collname'];
 $deptName     = $dept['DEPT_NAME'];
 
+// Use fixed unified login link for all credential emails
+$login_url = 'https://uomdcs.univofmumbai.in/unified_login.php';
+
 // ---------------------- PHPMailer ----------------------
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -73,7 +76,7 @@ try {
         <b>Department Name:</b> {$deptCollName}
         </p>
         <p>Kindly use the latest version of Google Chrome or Mozilla Firefox for the whole process.</p>
-        <p>1. Visit <a href='{$port_link}/index.php'>{$port_link}/index.php</a> for login.</p>
+        <p>1. Visit <a href='" . htmlspecialchars($login_url) . "'>" . htmlspecialchars($login_url) . "</a> for login.</p>
         <p>2. <b>Use the following credentials:</b><br>
         Email: {$email} <br>
         Password: {$password}</p>

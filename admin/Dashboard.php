@@ -1,20 +1,52 @@
 <?php
 // admin/Dashboard.php - Admin Dashboard
-require('session.php');
+error_reporting(E_ALL);
+ini_set('display_errors', 0); // Don't display on production
+ini_set('log_errors', 1);
 
-// Load progress functions
-require_once(__DIR__ . '/../common_progress_functions.php');
-
-// Additional admin-specific functionality
-require __DIR__ . '/../vendor/autoload.php';
-
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
-// $dotenv->load();
-$dotenv->safeLoad();
-
-// Get academic year and departments with progress
-$academic_year = getAcademicYear();
-$departments = getAllDepartmentsWithProgress($academic_year);
+try {
+    require('session.php');
+    
+    // Load progress functions
+    require_once(__DIR__ . '/../common_progress_functions.php');
+    
+    // Additional admin-specific functionality
+    require __DIR__ . '/../vendor/autoload.php';
+    
+    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
+    // $dotenv->load();
+    $dotenv->safeLoad();
+    
+    // Get academic year and departments with progress
+    if (!function_exists('getAcademicYear')) {
+        error_log("ERROR: getAcademicYear function not found");
+        die("System error: Required functions not available. Please contact administrator.");
+    }
+    
+    $academic_year = getAcademicYear();
+    
+    if (!function_exists('getAllDepartmentsWithProgress')) {
+        error_log("ERROR: getAllDepartmentsWithProgress function not found");
+        die("System error: Required functions not available. Please contact administrator.");
+    }
+    
+    $departments = [];
+    try {
+        $departments = getAllDepartmentsWithProgress($academic_year);
+        if (!is_array($departments)) {
+            $departments = [];
+        }
+    } catch (Exception $e) {
+        error_log("ERROR in getAllDepartmentsWithProgress: " . $e->getMessage());
+        $departments = [];
+    }
+} catch (Exception $e) {
+    error_log("FATAL ERROR in admin Dashboard.php: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
+    die("Error loading admin dashboard. Please contact administrator.");
+} catch (Error $e) {
+    error_log("FATAL ERROR in admin Dashboard.php: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine());
+    die("Fatal error loading admin dashboard. Please contact administrator.");
+}
 
 // Calculate statistics
 $total_depts = count($departments);
@@ -108,31 +140,68 @@ if ($conn->connect_error) {
 
 mysqli_set_charset($conn, 'utf8mb4'); // Ensure proper encoding
 
+// SECURITY: Validate table names against whitelist FIRST
+$allowed_tables = [
+    'brief_details_of_the_department', 'faculty_output', 'nepmarks', 
+    'department_data', 'student_support', 'conferences_workshops', 
+    'collaborations', 'supporting_documents', 'expert_reviews', 
+    'verification_flags', 'department_master', 'colleges'
+];
+
 // Fetch years from multiple tables
 foreach ($tables as $table) {
-    // Check if the table exists
-    $checkTableQuery = "SHOW TABLES LIKE '$table'";
-    $tableExists = $conn->query($checkTableQuery);
+    // SECURITY: Validate table name against whitelist BEFORE any query
+    if (!in_array($table, $allowed_tables, true)) {
+        continue; // Skip unknown tables
+    }
+    
+    // SECURITY: Use prepared statement for table existence check
+    $checkTableQuery = "SHOW TABLES LIKE ?";
+    $stmt_table = $conn->prepare($checkTableQuery);
+    if ($stmt_table) {
+        $stmt_table->bind_param('s', $table);
+        $stmt_table->execute();
+        $tableExists = $stmt_table->get_result();
+        $table_exists = ($tableExists && $tableExists->num_rows > 0);
+        if ($tableExists) {
+            mysqli_free_result($tableExists);
+        }
+        $stmt_table->close();
+    } else {
+        continue; // Skip if query fails
+    }
 
-    if ($tableExists->num_rows > 0) {
-        // Check if A_YEAR column exists
-        $query = "SHOW COLUMNS FROM `$table` LIKE 'A_YEAR'";
-        $columnExists = $conn->query($query);
+    if ($table_exists) {
+        // SECURITY: Use prepared statement for column check
+        $checkQuery = "SHOW COLUMNS FROM `$table` LIKE 'A_YEAR'";
+        $columnExists = $conn->query($checkQuery);
         
-        if ($columnExists->num_rows > 0) {
+        if ($columnExists && $columnExists->num_rows > 0) {
+            // SECURITY: Use prepared statement for year selection (table name is whitelisted, safe)
             $query = "SELECT DISTINCT A_YEAR FROM `$table` ORDER BY A_YEAR DESC";
             $result = $conn->query($query);
 
-            while ($row = $result->fetch_assoc()) {
-                if (!empty($row['A_YEAR'])) { 
-                    $years[] = $row['A_YEAR'];
+            if ($result) {
+                while ($row = $result->fetch_assoc()) {
+                    if (!empty($row['A_YEAR'])) { 
+                        $years[] = $row['A_YEAR'];
+                    }
                 }
-            }            
+                // SECURITY: Free result set
+                mysqli_free_result($result);
+            }
+            // SECURITY: Free column check result
+            mysqli_free_result($columnExists);
+        } elseif ($columnExists) {
+            mysqli_free_result($columnExists);
         }
     }
 }
 
-$conn->close();
+// SECURITY: Do NOT close persistent connections - they are reused across requests
+// Persistent connections (with 'p:' prefix in config.php) are managed by PHP/MySQL
+// Closing them defeats the purpose of connection pooling
+// $conn->close(); // REMOVED - persistent connections should not be closed
 
 // Remove duplicate years and sort
 $years = array_unique($years);

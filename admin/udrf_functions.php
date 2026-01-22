@@ -4,9 +4,18 @@
  * Copied from Chairman_login/functions.php
  */
 
-// CRITICAL: Check connection before use (Security Guide Section 12)
+// CRITICAL: Ensure config.php is loaded and connection is available
 if (!isset($GLOBALS['db_connection']) || !$GLOBALS['db_connection']) {
     require_once(__DIR__ . '/../config.php');
+}
+
+// CRITICAL: Ensure $conn is set from config.php
+if (!isset($conn) || !$conn) {
+    if (isset($GLOBALS['db_connection']) && $GLOBALS['db_connection']) {
+        $conn = $GLOBALS['db_connection'];
+    } else {
+        require_once(__DIR__ . '/../config.php');
+    }
 }
 
 // CRITICAL: Verify connection is alive
@@ -17,6 +26,16 @@ if (isset($conn) && $conn && !@mysqli_ping($conn)) {
         unset($GLOBALS['db_connection']);
     }
     require_once(__DIR__ . '/../config.php');
+    // Ensure $conn is set after reconnection
+    if (!isset($conn) && isset($GLOBALS['db_connection'])) {
+        $conn = $GLOBALS['db_connection'];
+    }
+}
+
+// CRITICAL: Final check - if connection still not available, log error
+if (!isset($conn) || !$conn) {
+    error_log("CRITICAL: Database connection unavailable in admin/udrf_functions.php");
+    die("Database connection error. Please contact administrator.");
 }
 
 require_once(__DIR__ . '/../Expert_comty_login/expert_functions.php');
@@ -28,9 +47,26 @@ function getAllCategoriesWithCounts($academic_year = null) {
     global $conn;
     
     // CRITICAL: Check connection before use (Security Guide Section 12)
-    if (!isset($conn) || !$conn || !@mysqli_ping($conn)) {
-        error_log("Database connection unavailable in getAllCategoriesWithCounts");
+    if (!isset($conn) || !$conn) {
+        error_log("Database connection unavailable in getAllCategoriesWithCounts - conn not set");
         return [];
+    }
+    
+    // CRITICAL: Verify connection is alive
+    if (!@mysqli_ping($conn)) {
+        error_log("Database connection dead in getAllCategoriesWithCounts - attempting reconnect");
+        // Try to reconnect
+        if (isset($GLOBALS['db_connection']) && $GLOBALS['db_connection']) {
+            @mysqli_close($GLOBALS['db_connection']);
+            unset($GLOBALS['db_connection']);
+        }
+        require_once(__DIR__ . '/../config.php');
+        if (isset($GLOBALS['db_connection'])) {
+            $conn = $GLOBALS['db_connection'];
+        } else {
+            error_log("Failed to reconnect in getAllCategoriesWithCounts");
+            return [];
+        }
     }
     
     if (!$academic_year) {
@@ -180,9 +216,26 @@ function getDepartmentsWithScores($category, $academic_year = null) {
     global $conn;
     
     // CRITICAL: Check connection before use (Security Guide Section 12)
-    if (!isset($conn) || !$conn || !@mysqli_ping($conn)) {
-        error_log("Database connection unavailable in getDepartmentsWithScores");
+    if (!isset($conn) || !$conn) {
+        error_log("Database connection unavailable in getDepartmentsWithScores - conn not set");
         return [];
+    }
+    
+    // CRITICAL: Verify connection is alive
+    if (!@mysqli_ping($conn)) {
+        error_log("Database connection dead in getDepartmentsWithScores - attempting reconnect");
+        // Try to reconnect
+        if (isset($GLOBALS['db_connection']) && $GLOBALS['db_connection']) {
+            @mysqli_close($GLOBALS['db_connection']);
+            unset($GLOBALS['db_connection']);
+        }
+        require_once(__DIR__ . '/../config.php');
+        if (isset($GLOBALS['db_connection'])) {
+            $conn = $GLOBALS['db_connection'];
+        } else {
+            error_log("Failed to reconnect in getDepartmentsWithScores");
+            return [];
+        }
     }
     
     // CRITICAL: Validate input (Security Guide Section 5)
@@ -214,6 +267,11 @@ function getDepartmentsWithScores($category, $academic_year = null) {
         $stmt->bind_param("ss", $category, $academic_year);
         $stmt->execute();
         $result = $stmt->get_result();
+        if (!$result) {
+            error_log("Query failed in getDepartmentsWithScores: " . $conn->error);
+            $stmt->close();
+            return [];
+        }
         while ($row = $result->fetch_assoc()) {
             // Get score for ranking (expert score if available, else dept auto score)
             $row['total_score'] = getDepartmentScoreForRanking($row['DEPT_ID'], $category, $academic_year);
@@ -293,9 +351,26 @@ function getAllExpertsForCategory($category) {
     global $conn;
     
     // CRITICAL: Check connection before use (Security Guide Section 12)
-    if (!isset($conn) || !$conn || !@mysqli_ping($conn)) {
-        error_log("Database connection unavailable in getAllExpertsForCategory");
+    if (!isset($conn) || !$conn) {
+        error_log("Database connection unavailable in getAllExpertsForCategory - conn not set");
         return [];
+    }
+    
+    // CRITICAL: Verify connection is alive
+    if (!@mysqli_ping($conn)) {
+        error_log("Database connection dead in getAllExpertsForCategory - attempting reconnect");
+        // Try to reconnect
+        if (isset($GLOBALS['db_connection']) && $GLOBALS['db_connection']) {
+            @mysqli_close($GLOBALS['db_connection']);
+            unset($GLOBALS['db_connection']);
+        }
+        require_once(__DIR__ . '/../config.php');
+        if (isset($GLOBALS['db_connection'])) {
+            $conn = $GLOBALS['db_connection'];
+        } else {
+            error_log("Failed to reconnect in getAllExpertsForCategory");
+            return [];
+        }
     }
     
     // CRITICAL: Validate input (Security Guide Section 5)
@@ -338,9 +413,26 @@ function getAllDepartmentsOverallRanking($academic_year = null) {
     global $conn;
     
     // CRITICAL: Check connection before use (Security Guide Section 12)
-    if (!isset($conn) || !$conn || !@mysqli_ping($conn)) {
-        error_log("Database connection unavailable in getAllDepartmentsOverallRanking");
+    if (!isset($conn) || !$conn) {
+        error_log("Database connection unavailable in getAllDepartmentsOverallRanking - conn not set");
         return [];
+    }
+    
+    // CRITICAL: Verify connection is alive
+    if (!@mysqli_ping($conn)) {
+        error_log("Database connection dead in getAllDepartmentsOverallRanking - attempting reconnect");
+        // Try to reconnect
+        if (isset($GLOBALS['db_connection']) && $GLOBALS['db_connection']) {
+            @mysqli_close($GLOBALS['db_connection']);
+            unset($GLOBALS['db_connection']);
+        }
+        require_once(__DIR__ . '/../config.php');
+        if (isset($GLOBALS['db_connection'])) {
+            $conn = $GLOBALS['db_connection'];
+        } else {
+            error_log("Failed to reconnect in getAllDepartmentsOverallRanking");
+            return [];
+        }
     }
     
     if (!$academic_year) {

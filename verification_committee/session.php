@@ -25,9 +25,9 @@ $_SESSION['current_role'] = 'verification';
 $_SESSION['user_table'] = $table;
 $_SESSION['user_permission'] = $permission;
 // CRITICAL FIX: Set admin_username for dashboard compatibility
-// $_SESSION['admin_username'] = $email;
-// // Ensure verification session is set
-// $_SESSION['verification'] = true;
+$_SESSION['admin_username'] = $email;
+// Ensure verification session is set
+$_SESSION['verification_committee'] = true;
 
 // Log access for security
 error_log("Verification Committee access: " . $email . " from " . $table . " table");

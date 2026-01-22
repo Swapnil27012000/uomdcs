@@ -9,8 +9,8 @@
             <span class="d-none d-md-inline">Dashboard</span>
         </a>
         <a href="AllDepartmentDetails.php" class="list-group-item list-group-item-action rounded-3 mb-1">
-            <i class="fas fa-list-alt me-2 text-secondary"></i>
-            <span class="d-none d-md-inline">All Departments</span>
+            <i class="fas fa-building me-2 text-primary"></i>
+            <span class="d-none d-md-inline">View Departments</span>
         </a>
         <a href="AddDepartmentDetails.php" class="list-group-item list-group-item-action rounded-3 mb-1">
             <i class="fas fa-plus-circle me-2 text-success"></i>
@@ -29,12 +29,28 @@
             <span class="d-none d-md-inline">NIRF Data</span>
         </a>
         <a href="FinancialExpenditure.php" class="list-group-item list-group-item-action rounded-3 mb-1">
-            <i class="fas fa-coins me-2 text-success"></i>
+            <i class="fas fa-coins me-2 text-info"></i>
             <span class="d-none d-md-inline">Financial Expenditure</span>
         </a>
         <a href="udrf_dashboard.php" class="list-group-item list-group-item-action rounded-3 mb-1">
             <i class="fas fa-database me-2 text-info"></i>
-            <span class="d-none d-md-inline">UDRF Data</span>
+            <span class="d-none d-md-inline">UDRF Dashboard</span>
+        </a>
+        <a href="manage_boss_users.php" class="list-group-item list-group-item-action rounded-3 mb-1">
+            <i class="fas fa-users-cog me-2 text-primary"></i>
+            <span class="d-none d-md-inline">Admin users management</span>
+        </a>
+        <a href="manage_expert_designations.php" class="list-group-item list-group-item-action rounded-3 mb-1">
+            <i class="fas fa-user-tag me-2 text-warning"></i>
+            <span class="d-none d-md-inline">Expert Designations</span>
+        </a>
+        <a href="manage_verification_committee.php" class="list-group-item list-group-item-action rounded-3 mb-1">
+            <i class="fas fa-check-circle me-2 text-success"></i>
+            <span class="d-none d-md-inline">Verification Committee</span>
+        </a>
+        <a href="AllUserCredentials.php" class="list-group-item list-group-item-action rounded-3 mb-1">
+            <i class="fas fa-envelope me-2 text-info"></i>
+            <span class="d-none d-md-inline">Send Admin Credentials</span>
         </a>
         <div class="mt-auto"></div>
         <a href="../logout.php" class="list-group-item list-group-item-action text-danger rounded-3 mt-4">

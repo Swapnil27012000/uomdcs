@@ -1,11 +1,45 @@
 <?php
-// admin/AllDepartmentDetails.php - All Department Details
+// admin/AllUserCredentials.php - Send Credentials to Experts, AAQA, Chairman, etc.
 require('session.php');
 error_reporting(0);
 
-$year = date("Y");
-$pyear = $year - 1;
-$A_YEAR = $pyear . '-' . $year;
+// Check if SEND_CRED column exists in boss table
+$check_col = mysqli_query($conn, "SHOW COLUMNS FROM boss LIKE 'SEND_CRED'");
+$has_send_cred = ($check_col && mysqli_num_rows($check_col) > 0);
+if ($check_col) {
+    mysqli_free_result($check_col);
+}
+
+// Get all users from boss table (experts, AAQA, chairman, etc.)
+if ($has_send_cred) {
+    $query = "SELECT Id, EMAIL, PASS_WORD, PERMISSION, IFNULL(SEND_CRED, 0) AS SEND_CRED
+              FROM boss
+              WHERE PERMISSION IN ('Expert_comty_login', 'AAQA_login', 'Chairman_login', 'verification_committee')
+              ORDER BY 
+                CASE PERMISSION 
+                    WHEN 'Expert_comty_login' THEN 1
+                    WHEN 'AAQA_login' THEN 2
+                    WHEN 'Chairman_login' THEN 3
+                    WHEN 'verification_committee' THEN 4
+                    ELSE 5
+                END,
+                EMAIL";
+} else {
+    $query = "SELECT Id, EMAIL, PASS_WORD, PERMISSION, 0 AS SEND_CRED
+              FROM boss
+              WHERE PERMISSION IN ('Expert_comty_login', 'AAQA_login', 'Chairman_login', 'verification_committee')
+              ORDER BY 
+                CASE PERMISSION 
+                    WHEN 'Expert_comty_login' THEN 1
+                    WHEN 'AAQA_login' THEN 2
+                    WHEN 'Chairman_login' THEN 3
+                    WHEN 'verification_committee' THEN 4
+                    ELSE 5
+                END,
+                EMAIL";
+}
+$result = mysqli_query($conn, $query);
+// SECURITY: Note - query has no user input, but result should be freed after use
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -18,7 +52,7 @@ $A_YEAR = $pyear . '-' . $year;
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" />
     <link rel="stylesheet" href="assets/css/styles.css" />
     <link rel="icon" href="assets/img/mumbai-university-removebg-preview.png" type="image/png">
-    <title>UoM Centralized DCS Ranking PORTAL</title>
+    <title>User Credentials Management - Admin</title>
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 
     <style>
@@ -35,19 +69,19 @@ $A_YEAR = $pyear . '-' . $year;
             margin-top: 30px;
         }
 
-        #collegetable,
-        #collegetable th,
-        #collegetable td {
+        #userstable,
+        #userstable th,
+        #userstable td {
             border: 1px solid #dee2e6 !important;
         }
 
-        #collegetable th,
-        #collegetable td {
+        #userstable th,
+        #userstable td {
             padding: 12px;
             vertical-align: middle;
         }
 
-        #collegetable {
+        #userstable {
             border-collapse: collapse;
             margin: 20px 0;
         }
@@ -84,6 +118,11 @@ $A_YEAR = $pyear . '-' . $year;
         .download-btn:hover {
             background-color: #0056b3;
         }
+
+        .badge-permission {
+            font-size: 0.85rem;
+            padding: 0.35rem 0.65rem;
+        }
     </style>
 </head>
 
@@ -94,14 +133,14 @@ $A_YEAR = $pyear . '-' . $year;
             <nav class="navbar navbar-expand-lg navbar-light bg-transparent py-4 px-4">
                 <div class="d-flex align-items-center">
                     <i class="fas fa-align-left primary-text fs-4 me-3" id="menu-toggle"></i>
-                    <h2 class="fs-2 m-0">Dashboard</h2>
+                    <h2 class="fs-2 m-0">User Credentials Management</h2>
                 </div>
                 <div class="collapse navbar-collapse" id="navbarSupportedContent">
                     <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle second-text fw-bold" href="#" id="navbarDropdown"
                                 role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                <i class="fas fa-user me-2"></i><?php echo $_SESSION['admin_username'] ?>
+                                <i class="fas fa-user me-2"></i><?php echo htmlspecialchars($_SESSION['admin_username'] ?? 'Admin'); ?>
                             </a>
                             <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
                                 <li><a class="dropdown-item" href="../logout.php">Logout</a></li>
@@ -115,65 +154,79 @@ $A_YEAR = $pyear . '-' . $year;
                 <div class="container">
                     <div id="responseMessage" class="alert"></div>
 
-                    <!-- ✅ Download as Excel Button -->
+                    <!-- Download as Excel Button -->
                     <button id="downloadExcel" class="download-btn">
                         <i class="fas fa-file-excel"></i> Download as Excel
                     </button>
 
                     <div>
-                        <table class="table table-bordered" id="collegetable" style="width:100%;">
+                        <table class="table table-bordered" id="userstable" style="width:100%;">
                             <thead>
                                 <tr>
-                                    <th>Department Code</th>
-                                    <th>Department Name</th>
-                                    <th>Department Email</th>
-                                    <th>HOD Email</th>
-                                    <th>Department password</th>
+                                    <th>Email</th>
+                                    <th>Password</th>
+                                    <th>Permission/Role</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <?php
-                                ini_set('display_errors', 1);
-                                error_reporting(E_ALL);
-                                // SECURITY: Use prepared statement (no user input, but best practice)
-                                $query = "SELECT a.DEPT_ID, a.DEPT_COLL_NO, b.collno, a.DEPT_NAME, a.EMAIL, a.HOD_EMAIL, a.PASS_WORD, b.collname, IFNULL(a.SEND_CRED,0) AS SEND_CRED
-                                          FROM department_master a
-                                          JOIN colleges b ON b.collno = a.DEPT_COLL_NO";
-                                $result = mysqli_query($conn, $query);
-                                if ($result) {
+                                if ($result && mysqli_num_rows($result) > 0) {
                                     while ($row = mysqli_fetch_assoc($result)) {
-                                        $deptId    = (int)$row['DEPT_ID'];
-                                        $deptName  = htmlspecialchars($row['collname']);
-                                        $deptEmail = htmlspecialchars($row['EMAIL']);
-                                        $deptHodEmail = htmlspecialchars($row['HOD_EMAIL']);
-                                        $deptPass  = htmlspecialchars($row['PASS_WORD']);
-                                        $deptCode  = htmlspecialchars($row['collno']);
-                                        $sendCred  = (int)$row['SEND_CRED'];
+                                        $userId = (int)$row['Id'];
+                                        $email = htmlspecialchars($row['EMAIL'], ENT_QUOTES, 'UTF-8');
+                                        $password = htmlspecialchars($row['PASS_WORD'], ENT_QUOTES, 'UTF-8');
+                                        $permission = htmlspecialchars($row['PERMISSION'], ENT_QUOTES, 'UTF-8');
+                                        $sendCred = (int)($row['SEND_CRED'] ?? 0);
+
+                                        // Get permission badge color
+                                        $badgeClass = 'bg-secondary';
+                                        $permissionLabel = $permission;
+                                        switch (strtolower($permission)) {
+                                            case 'expert_comty_login':
+                                                $badgeClass = 'bg-info';
+                                                $permissionLabel = 'Expert Committee';
+                                                break;
+                                            case 'aaqa_login':
+                                                $badgeClass = 'bg-primary';
+                                                $permissionLabel = 'AAQA';
+                                                break;
+                                            case 'chairman_login':
+                                                $badgeClass = 'bg-success';
+                                                $permissionLabel = 'Chairman';
+                                                break;
+                                            case 'verification_committee':
+                                                $badgeClass = 'bg-warning text-dark';
+                                                $permissionLabel = 'Verification Committee';
+                                                break;
+                                        }
 
                                         $btnClass = $sendCred === 1 ? 'btn-resend' : 'btn-send';
-                                        $btnText  = $sendCred === 1 ? 'Re-send Credentials' : 'Send Credentials';
+                                        $btnText = $sendCred === 1 ? 'Re-send Credentials' : 'Send Credentials';
                                 ?>
                                         <tr>
-                                            <td class="text-center"><?php echo $deptCode; ?></td>
-                                            <td><?php echo $deptName; ?></td>
-                                            <td><?php echo $deptEmail; ?></td>
-                                            <td><?php echo $deptHodEmail; ?></td>
-                                            <td><?php echo $deptPass; ?></td>
+                                            <td><?php echo $email; ?></td>
+                                            <td><?php echo $password; ?></td>
+                                            <td>
+                                                <span class="badge <?php echo $badgeClass; ?> badge-permission">
+                                                    <?php echo $permissionLabel; ?>
+                                                </span>
+                                            </td>
                                             <td>
                                                 <button type="button"
                                                     class="btn <?php echo $btnClass; ?> send-mail-btn"
-                                                    data-id="<?php echo $deptId; ?>">
+                                                    data-id="<?php echo $userId; ?>"
+                                                    data-email="<?php echo htmlspecialchars($email, ENT_QUOTES); ?>"
+                                                    data-permission="<?php echo htmlspecialchars($permission, ENT_QUOTES); ?>">
                                                     <?php echo $btnText; ?>
                                                 </button>
                                             </td>
                                         </tr>
                                 <?php
                                     }
-                                    // SECURITY: Free result set
                                     mysqli_free_result($result);
                                 } else {
-                                    echo '<tr><td colspan="5">No departments found or query error.</td></tr>';
+                                    echo '<tr><td colspan="4">No users found.</td></tr>';
                                 }
                                 ?>
                             </tbody>
@@ -188,46 +241,52 @@ $A_YEAR = $pyear . '-' . $year;
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <!-- ✅ SheetJS for Excel Export -->
+    <!-- SheetJS for Excel Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <script>
         $(document).ready(function() {
-            var table = $('#collegetable').DataTable({
+            var table = $('#userstable').DataTable({
                 responsive: true,
                 pageLength: 10,
-                lengthMenu: [5, 10, 25, 50, 100,500, 1000],
+                lengthMenu: [5, 10, 25, 50, 100, 500, 1000],
                 columnDefs: [{
                     orderable: false,
-                    targets: 4
+                    targets: 3
                 }]
             });
 
-            // ✅ Download Excel function
+            // Download Excel function
             $('#downloadExcel').on('click', function() {
                 var wb = XLSX.utils.book_new();
-                var ws = XLSX.utils.table_to_sheet(document.getElementById('collegetable'));
-                XLSX.utils.book_append_sheet(wb, ws, "Departments");
-                XLSX.writeFile(wb, "Department_List.xlsx");
+                var ws = XLSX.utils.table_to_sheet(document.getElementById('userstable'));
+                XLSX.utils.book_append_sheet(wb, ws, "Users");
+                XLSX.writeFile(wb, "User_Credentials_List.xlsx");
             });
 
-            // ✅ Send Mail Button logic
-            $('#collegetable tbody').on('click', '.send-mail-btn', function() {
+            // Send Mail Button logic
+            $('#userstable tbody').on('click', '.send-mail-btn', function() {
                 var button = $(this);
-                var deptId = button.data('id');
+                var userId = button.data('id');
+                var email = button.data('email');
+                var permission = button.data('permission');
                 var responseBox = $('#responseMessage');
 
-                if (!deptId) {
-                    responseBox.removeClass().addClass("alert alert-danger").text("Invalid Department ID").fadeIn();
+                if (!userId) {
+                    responseBox.removeClass().addClass("alert alert-danger").text("Invalid User ID").fadeIn();
                     return;
                 }
 
                 button.text('Sending...').prop('disabled', true);
 
                 $.ajax({
-                    url: 'sendmail.php',
+                    url: 'send_user_credentials.php',
                     type: 'POST',
-                    data: { deptId: deptId },
+                    data: { 
+                        userId: userId,
+                        email: email,
+                        permission: permission
+                    },
                     dataType: 'json',
                     success: function(data) {
                         if (data && data.status === "success") {
@@ -259,9 +318,8 @@ $A_YEAR = $pyear . '-' . $year;
             el.classList.toggle("toggled");
         };
     </script>
-<!-- Footer -->
-<?php include '../footer_main.php';?>
+    <!-- Footer -->
+    <?php include '../footer_main.php';?>
 </body>
-
 
 </html>

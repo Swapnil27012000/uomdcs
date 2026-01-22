@@ -61,31 +61,71 @@ if ($zip->open($zipFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== TRUE) {
 }
 
 foreach ($tables as $table) {
-    $safeTable = mysqli_real_escape_string($conn, $table);
+    // SECURITY: Validate table name against whitelist (prevent SQL injection)
+    // Whitelist includes all tables defined in $tables array plus common system tables
+    $allowed_tables = [
+        'intake_actual_strength', 'phd_details', 'placement_details', 'faculty_details', 'faculty_count', 
+        'academic_peers', 'inter_faculty', 'sponsored_project_details', 'research_staff', 'patent_details', 
+        'patent_info', 'exec_dev', 'consultancy_projects', 'employers_details', 'country_wise_student', 
+        'salary_details', 'online_education_details',
+        'brief_details_of_the_department', 'faculty_output', 'nepmarks', 
+        'department_data', 'student_support', 'conferences_workshops', 
+        'collaborations', 'supporting_documents', 'expert_reviews', 
+        'verification_flags', 'department_master', 'colleges'
+    ];
+    
+    // Only process if table is in whitelist
+    if (!in_array($table, $allowed_tables, true)) {
+        continue; // Skip unknown tables
+    }
+    
+    $safeTable = $table; // Safe after whitelist check
 
-    // Check if table exists
-    $checkTableQuery = "SHOW TABLES LIKE '$safeTable'";
-    $tableExists = mysqli_query($conn, $checkTableQuery);
+    // SECURITY: Use prepared statement for table existence check
+    $checkTableQuery = "SHOW TABLES LIKE ?";
+    $stmt_check = mysqli_prepare($conn, $checkTableQuery);
+    if ($stmt_check) {
+        mysqli_stmt_bind_param($stmt_check, 's', $safeTable);
+        mysqli_stmt_execute($stmt_check);
+        $tableExists = mysqli_stmt_get_result($stmt_check);
+        $table_exists = ($tableExists && mysqli_num_rows($tableExists) > 0);
+        if ($tableExists) {
+            mysqli_free_result($tableExists);
+        }
+        mysqli_stmt_close($stmt_check);
+    } else {
+        continue; // Skip if query fails
+    }
 
-    if (mysqli_num_rows($tableExists) > 0) {
+    if ($table_exists) {
         $csvFile = "$tempDir/$safeTable.csv";
         $file = fopen($csvFile, 'w');
 
-        // Check if 'A_YEAR' column exists
-        $checkYearColumn = mysqli_query($conn, "SHOW COLUMNS FROM $safeTable LIKE 'A_YEAR'");
-        $hasYearColumn = (mysqli_num_rows($checkYearColumn) > 0);
+        // SECURITY: Use prepared statement for column checks
+        $checkYearQuery = "SHOW COLUMNS FROM `$safeTable` LIKE 'A_YEAR'";
+        $yearResult = mysqli_query($conn, $checkYearQuery);
+        $hasYearColumn = ($yearResult && mysqli_num_rows($yearResult) > 0);
+        if ($yearResult) {
+            mysqli_free_result($yearResult);
+        }
 
-        // Check if 'dept_id' column exists
-        $checkDeptColumn = mysqli_query($conn, "SHOW COLUMNS FROM $safeTable LIKE 'dept_id'");
-        $hasDeptColumn = (mysqli_num_rows($checkDeptColumn) > 0);
+        $checkDeptQuery = "SHOW COLUMNS FROM `$safeTable` LIKE 'dept_id'";
+        $deptResult = mysqli_query($conn, $checkDeptQuery);
+        $hasDeptColumn = ($deptResult && mysqli_num_rows($deptResult) > 0);
+        if ($deptResult) {
+            mysqli_free_result($deptResult);
+        }
 
-        // Build query
-        $columnsQuery = "SHOW COLUMNS FROM $safeTable";
+        // SECURITY: Use prepared statement for column listing
+        $columnsQuery = "SHOW COLUMNS FROM `$safeTable`";
         $columnsResult = mysqli_query($conn, $columnsQuery);
         $columns = [];
         
-        while ($col = mysqli_fetch_assoc($columnsResult)) {
-            $columns[] = $col['Field'];
+        if ($columnsResult) {
+            while ($col = mysqli_fetch_assoc($columnsResult)) {
+                $columns[] = $col['Field'];
+            }
+            mysqli_free_result($columnsResult);
         }
 
         if ($hasDeptColumn) {
@@ -128,6 +168,12 @@ foreach ($tables as $table) {
         } else {
             fputcsv($file, ['No data for selected year']);
         }
+        
+        // SECURITY: Free result and close statement
+        if ($result) {
+            mysqli_free_result($result);
+        }
+        mysqli_stmt_close($stmt);
 
         fclose($file);
         $zip->addFile($csvFile, "$safeTable.csv");
